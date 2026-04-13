@@ -52,7 +52,7 @@
     // Auto-review round-robin assignment pools
     TIER_REVIEW: {
       TIER_1: 'Tamara',
-      TIER_23_POOL: ['Isaac']
+      TIER_23_POOL: ['Isaac', 'Luciana', 'Ethan']
     },
     OPS_REVIEW: {
       POOL: [
@@ -1162,7 +1162,7 @@
     var pool = CONFIG.TIER_REVIEW.TIER_23_POOL;
     return kintone.api(kintone.api.url('/k/v1/records', true), 'GET', {
       app: CONFIG.APP_101,
-      query: 'reviewer in ("Isaac") order by Record_number desc limit 1',
+      query: 'reviewer in ("Isaac","Luciana","Ethan") order by Record_number desc limit 1',
       fields: ['reviewer']
     }).then(function(resp) {
       if (resp.records.length > 0) {
