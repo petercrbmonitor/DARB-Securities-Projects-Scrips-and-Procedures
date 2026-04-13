@@ -25,7 +25,7 @@
  *         guidance banner, next-record navigation, readable timestamps
  *
  * Statuses: Pending -> Complete / Needs Analyst Review
- * Junior (Tim/Isaac): Complete + Escalate buttons
+ * Junior (Isaac): Complete + Escalate buttons
  * Analyst (Peter/Tamara): Research Complete button
  * Escalation creates App 57 task (assign to + notes only)
  * All features consolidated into this single file

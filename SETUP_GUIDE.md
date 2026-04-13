@@ -28,7 +28,7 @@ A flexible task system for assigning data work from App 23 (DARB) to team member
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │ Task: "Update Company Names"                              │  │
-│  │ Assignee: Tim                                             │  │
+│  │ Assignee: Isaac                                           │  │
 │  │ Scope: Batch (47 records)                                 │  │
 │  │ Link: [View in DARB] → opens filtered view                │  │
 │  │ Status: In Progress                                       │  │
@@ -237,10 +237,6 @@ const CONFIG = {
 - Filter: Status ≠ Complete
 - Sort: End_Date (ascending)
 
-**"Tim's Tasks" View:**
-- Filter: Assignee contains "timothy.rogers@crbmonitor.com"
-- Filter: Status ≠ Complete
-
 **"Isaac's Tasks" View:**
 - Filter: Assignee contains "isaac.moriarty@crbmonitor.com"
 - Filter: Status ≠ Complete
@@ -271,7 +267,7 @@ Create and save filtered views that you'll reference in tasks:
 1. Open any record in App 23
 2. Click **🚩 Create Task** button
 3. Quick-select template or type task name
-4. Select assignee (Tim, Isaac, etc.)
+4. Select assignee (Isaac, Luciana, etc.)
 5. Set due date and add notes
 6. Click **Create Task & Notify**
 7. Assignee receives email with direct link to the record
@@ -376,11 +372,12 @@ Click a template to pre-fill the task name and type.
 |------|-------|
 | Peter | peter@crbmonitor.com |
 | Tamara Guy | tamara.guy@crbmonitor.com |
-| Timothy Rogers | timothy.rogers@crbmonitor.com |
 | Isaac Moriarty | isaac.moriarty@crbmonitor.com |
 | Mel Dapanas | mel.dapanas@crbmonitor.com |
 | Jaypee Ollos | joephillip.ollos@crbmonitor.com |
 | James Francis | james.francis@crbmonitor.com |
+| Luciana Villareal Romero | luciana.villarealromero@crbmonitor.com |
+| Ethan Guys | ethan.guys@crbmonitor.com |
 
 To add/remove team members, edit the `TEAM_MEMBERS` array in `darb_app_23_task_button.js`.
 
