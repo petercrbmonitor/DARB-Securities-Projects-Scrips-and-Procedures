@@ -52,7 +52,7 @@
     // Auto-review round-robin assignment pools
     TIER_REVIEW: {
       TIER_1: 'Tamara',
-      TIER_23_POOL: ['Tim', 'Isaac']
+      TIER_23_POOL: ['Isaac', 'Luciana', 'Ethan']
     },
     OPS_REVIEW: {
       POOL: [
@@ -91,10 +91,11 @@
     // Keep this in sync with the Research + Research Admins groups in Kintone.
     FALLBACK_MEMBERS: [
       // Research group
-      { name: 'Tim', code: 'timothy.rogers@crbmonitor.com' },
       { name: 'Isaac M', code: 'isaac.moriarty@crbmonitor.com' },
       { name: 'Mel Dapanas', code: 'mel.dapanas@crbmonitor.com' },
       { name: 'Jaypee Ollos', code: 'joephillip.ollos@crbmonitor.com' },
+      { name: 'Luciana', code: 'luciana.villarealromero@crbmonitor.com' },
+      { name: 'Ethan', code: 'ethan.guys@crbmonitor.com' },
       // Research Admins group
       { name: 'Jim', code: 'james.francis@crbmonitor.com' },
       { name: 'Kyle', code: 'kyle.buckley@crbmonitor.com' },
@@ -1161,7 +1162,7 @@
     var pool = CONFIG.TIER_REVIEW.TIER_23_POOL;
     return kintone.api(kintone.api.url('/k/v1/records', true), 'GET', {
       app: CONFIG.APP_101,
-      query: 'reviewer in ("Tim","Isaac") order by Record_number desc limit 1',
+      query: 'reviewer in ("Isaac","Luciana","Ethan") order by Record_number desc limit 1',
       fields: ['reviewer']
     }).then(function(resp) {
       if (resp.records.length > 0) {

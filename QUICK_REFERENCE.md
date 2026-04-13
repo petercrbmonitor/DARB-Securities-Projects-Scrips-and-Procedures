@@ -59,7 +59,6 @@
 
 ## Team Shortcuts
 
-- **Tim** → timothy.rogers@crbmonitor.com
 - **Isaac** → isaac.moriarty@crbmonitor.com
 - **Tamara** → tamara.guy@crbmonitor.com
 - **Mel** → mel.dapanas@crbmonitor.com
@@ -70,7 +69,6 @@
 ## Useful Views (App 57)
 
 - **My Tasks** → Your assigned work
-- **Tim's Tasks** → Tim's queue
 - **Isaac's Tasks** → Isaac's queue
 - **Overdue Tasks** → Past due date
 - **Data Tasks** → Clean/Update/Review work
