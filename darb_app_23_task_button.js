@@ -1246,7 +1246,7 @@
             reviewer: { value: reviewer101 },
             assigned_by: { value: 'Peter' },
             date_assigned: { value: today },
-            review_status: { value: 'Not Started' },
+            review_status: { value: 'Pending' },
             review_outcome: { value: 'No Changes Needed' },
             audit_log: {
               value: [{
@@ -1285,7 +1285,7 @@
             Text: { value: profileStatus },
             Text_0: { value: domicile },
             reviewer: { value: [{ code: reviewer102.code }] },
-            review_status: { value: 'Not Started' },
+            review_status: { value: 'Pending' },
             priority: { value: 'Medium' },
             audit_log: {
               value: [{
