@@ -471,7 +471,7 @@
 
   function doPull(providerFilter, allow) {
     // Existing this-app records keyed by app23 id (status + lock drive the dequeue sweep).
-    return fetchAll(THIS_APP, 'order by $id asc', [F.a23id, F.status, F.inEdit, F.order])
+    return fetchAll(THIS_APP, '', [F.a23id, F.status, F.inEdit, F.order])
       .then(function (existing) {
         var byKey = {};
         var maxOrder = 0;
