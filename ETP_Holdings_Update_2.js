@@ -1,0 +1,1057 @@
+/*
+ * ETP Holdings Update - Kintone customization
+ * App 106 (csl61zqur0t5.kintone.com)
+ *
+ * Implements the workflow the native config cannot do:
+ *   - Add to Queue / Refresh Queue (sector-allowlisted pull from App 23)
+ *   - Fetch Record / Fetch Next Record (auto-assignment + 24h same-issuer rule)
+ *   - Screen buttons and navigation (Overview / edit / view-only / Updated Records)
+ *   - Save  -> push Holdings back into App 23, release lock
+ *   - Cancel -> discard, release lock
+ *
+ * Does NOT modify App 23 or App 54. The master app (App 86 in test, App 23 live)
+ * is only read on pull and written back on Save. The cryptoasset reference
+ * (App 85 in test, App 34 live) is read-only - used for BCBS auto-fill and for
+ * Paste allocation ticker matching.
+ *
+ * Two analyst conveniences on the edit screen:
+ *   - BCBS auto-fill: setting an Underlying Cryptoasset fills BCBS Group from the
+ *     reference app (non-blocking; name mismatches never block the edit).
+ *   - Paste allocation: paste a name/ticker/weight block; rows are matched against
+ *     the reference app and added to the Holdings table for review before Save.
+ *
+ * Environment is controlled by APP_MASTER / APP_REF in CONFIG below.
+ */
+(function () {
+  'use strict';
+
+  /* ===================== CONFIG (edit here, no rebuild) ===================== */
+
+  var THIS_APP = 106;
+
+  // ---- ENVIRONMENT SWITCH ----
+  // TEST: master = App 86 (copy of 23), reference = App 85 (copy of 34).
+  // To go LIVE, set APP_MASTER = 23 and APP_REF = 34.
+  var APP_MASTER = 86;            // ETP profiles to pull from / push to
+  var APP_REF = 85;              // cryptoasset reference (for BCBS auto-fill)
+  var APP23 = APP_MASTER;        // alias kept for the rest of the code
+
+  // Sector allowlist - only master-app profiles in these sectors are queued.
+  // Allowlist (include), never a blocklist. Add a sector here to let it in.
+  // Strings must match the master app's "Sector" (Drop_down_3) labels exactly.
+  // NOTE: App 86 names the options sector "DA - Options Based Strategy Exchange
+  // Traded Fund (ETF)"; live App 23 uses "DA - Options Based Strategy ETP".
+  // Both are listed so the allowlist works against either environment.
+  var ALLOWLIST_SECTORS = [
+    'DA - Exchange Traded Fund (ETF)',
+    'DA & DARB - Exchange Traded Fund (ETF)',
+    'DARB - Exchange Traded Fund (ETF)',
+    'DA - Exchange Traded Note (ETN)',
+    'DA & DARB - Exchange Traded Note (ETN)',
+    'DARB - Exchange Traded Note (ETN)',
+    'DA - Closed-end Fund (CEF)',
+    'DA & DARB - Closed-end Fund (CEF)',
+    'DARB - Closed-end Fund (CEF)',
+    'DA - Options Based Strategy Exchange Traded Fund (ETF)',
+    'DA - Options Based Strategy ETP'
+  ];
+
+  // Only pull profiles with this Profile Status (Drop_down_22).
+  var APP23_ACTIVE_ONLY = true;
+
+  // ---- REVIEW CADENCE ----
+  // Records are revisited on a cadence. "Queue Due Reviews" re-queues any Updated
+  // record whose Next Review Due date has passed, re-pulling fresh data from the
+  // master app first so the analyst always reviews current App 23 data.
+  // Cadence is per-record (review_cadence dropdown); default below is used when a
+  // record has no cadence set. "Hold" excludes a record from auto re-queue.
+  var DEFAULT_CADENCE = 'Monthly';
+  var CADENCE_MONTHS = { 'Monthly': 1, 'Quarterly': 3, 'Semi-Annual': 6, 'Annual': 12, 'Hold': null };
+
+  // Master-app field codes used on pull/push.
+  var A23 = {
+    sector: 'Drop_down_3',          // Sector
+    profileStatus: 'Drop_down_22',  // Profile Status
+    issuer: 'Text_27',              // ETP Issuer (top-level; exists in App 23 and 86)
+    etpName: 'Text',                // Primary Business Name
+    securitiesTable: 'Table_1',     // Securities subtable
+    secPrimarySymbol: 'Text_33',    // Primary Symbol (identifier source)
+    secIsin: 'Text_36',             // ISIN (identifier fallback)
+    sec_id: 'security_id',          // Security Id
+    sec_type: 'Drop_down_9',        // Security Type
+    sec_status: 'Drop_down_10',     // Security Status
+    sec_maturity: 'Date_8',         // Maturity Date
+    sec_cusip: 'Text_35',           // CUSIP
+    sec_futExpiry: 'Text_47',       // Futures Expiry (text)
+    sec_exchange: 'Text_57',        // Primary Exchange Name
+    holdingsTable: 'Table_7',       // DA ETP Holdings subtable
+    h_assetType: 'Text_30',         // ETP - Asset Breakdown (dropdown)
+    h_underlying: 'Drop_down_24',   // Underlying Cryptoasset Name (lookup key)
+    h_bcbs: 'Drop_down_14',         // BCBS Group
+    h_pct: 'Text_28',               // Underlying Asset Breakdown (%) - text
+    h_asOf: 'Date_and_time_0',      // As of Date
+    // derived targets (App 23's own automations normally set these in the UI)
+    bcbsRollup: 'BCBS_Lowest_Value', // ETP BCBS Group (worst-of rollup)
+    updatedBy: 'HoldingsUpdateSummary', // Holdings last updated by (name)
+    updatedAt: 'Date_and_time_1'     // Holding review date and time
+  };
+
+  // Reference app (App 85 test / App 34 live) field codes - for BCBS auto-fill.
+  var A34 = {
+    key: 'Text_3',           // Underlying Cryptoasset Name (unique key)
+    bcbs: 'Drop_down',       // BCBS Group
+    foundInEtps: 'Drop_down_18' // Found in ETPs?
+  };
+
+  // This app's field codes.
+  var F = {
+    a23id: 'app23_record_id',
+    issuer: 'issuer',
+    etpName: 'etp_name',
+    identifier: 'identifier',
+    sector: 'sector',
+    status: 'status',
+    assignedTo: 'assigned_to',
+    assignedAt: 'assigned_at',
+    inEdit: 'in_edit',
+    lastBy: 'last_updated_by',
+    lastAt: 'last_updated_at',
+    order: 'order_seq',
+    cadence: 'review_cadence',
+    reviewDue: 'review_due',
+    secTable: 'securities_table',
+    s_id: 'sec_security_id',
+    s_type: 'sec_type',
+    s_status: 'sec_status',
+    s_maturity: 'sec_maturity',
+    s_cusip: 'sec_cusip',
+    s_isin: 'sec_isin',
+    s_futExpiry: 'sec_futures_expiry',
+    s_symbol: 'sec_symbol',
+    s_exchange: 'sec_exchange',
+    table: 'holdings_table',
+    t_rowId: 'a23_row_id',
+    t_assetType: 'asset_type',
+    t_underlying: 'underlying_asset',
+    t_bcbs: 'bcbs_group',
+    t_pct: 'breakdown_pct',
+    t_asOf: 'as_of_date'
+  };
+
+  var ST = { NOT: 'Not in Queue', QUEUE: 'In Queue', ASSIGNED: 'Assigned', UPDATED: 'Updated' };
+
+  // App 23 runs three client-side automations on its OWN form. A REST API write
+  // (which is how App 106 pushes back) does NOT trigger them, so we replicate
+  // them here on push so App 23 stays consistent:
+  //   D1  percentage cleanup -> Text_28 stored as "NN.NN%", As of Date stamped per row
+  //   D2  BCBS rollup        -> BCBS_Lowest_Value = worst BCBS group across rows
+  //   D3  last updated by/at -> HoldingsUpdateSummary = saver name, Date_and_time_1 = now
+  var ROLLUP_RANKING = ['1A', '1B', '2A', '2B']; // best -> worst; worst present wins
+  var PCT_DECIMALS = 2;
+
+  // Profile-level context fields mirrored from App 23.
+  // a106 = field code here, a23 = App 23 field code, push = write back on Save.
+  // Fields flagged derived:true are NOT pushed generically - they are recomputed
+  // on push by the D1/D2/D3 logic above, and locked in edit.
+  var PROFILE_FIELDS = [
+    { a106: 'holds_spot_crypto',            a23: 'Drop_down_34',         push: true },
+    { a106: 'etp_bcbs_group',               a23: 'BCBS_Lowest_Value',    push: false, derived: true },
+    { a106: 'portfolio_type',               a23: 'Drop_down_36',         push: true },
+    { a106: 'etp_holdings_type',            a23: 'Text_52',              push: true },
+    { a106: 'staking_yield',                a23: 'Text_53',              push: true },
+    { a106: 'expense_ratio',                a23: 'Text_16',              push: true },
+    { a106: 'aum_expense_updated',          a23: 'Date_2',               push: true },
+    { a106: 'holding_review_dt',            a23: 'Date_and_time_1',      push: false, derived: true },
+    { a106: 'holdings_url',                 a23: 'Link',                 push: true },
+    { a106: 'reconstitution_schedule',      a23: 'Drop_down_26',         push: true },
+    { a106: 'reconstitution_note',          a23: 'Text_area_7',          push: true },
+    // D3: stamped on push with the saver's name (App 23's own "last updated by").
+    { a106: 'holdings_last_updated_by_a23', a23: 'HoldingsUpdateSummary', push: false, derived: true }
+  ];
+
+  /* ============================= HELPERS ============================= */
+
+  function api(path, method, params) {
+    return kintone.api(kintone.api.url(path, true), method, params);
+  }
+
+  function me() { return kintone.getLoginUser(); }
+
+  function nowIso() { return new Date().toISOString(); }
+
+  // ---- review cadence helpers ----
+  function cadenceMonths(c) {
+    var m = CADENCE_MONTHS.hasOwnProperty(c) ? CADENCE_MONTHS[c] : undefined;
+    if (m === null) return null;                 // Hold -> no auto re-queue
+    return (m === undefined) ? CADENCE_MONTHS[DEFAULT_CADENCE] : m; // blank -> default
+  }
+  function ymd(d) {
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  function todayYmd() { return ymd(new Date()); }
+  function addMonths(d, n) {
+    var x = new Date(d.getTime());
+    var day = x.getDate();
+    x.setMonth(x.getMonth() + n);
+    if (x.getDate() < day) x.setDate(0); // clamp end-of-month overflow
+    return x;
+  }
+  // Next due date string from a base review date (ISO or '') and a cadence.
+  // Hold -> '' (never auto-due). No base -> counts from today.
+  function computeDue(baseIso, cadence) {
+    var months = cadenceMonths(cadence);
+    if (months === null) return '';
+    var base = baseIso ? new Date(baseIso) : new Date();
+    if (isNaN(base.getTime())) base = new Date();
+    return ymd(addMonths(base, months));
+  }
+
+  function num(v) {
+    if (v === null || v === undefined || v === '') return null;
+    var n = parseFloat(String(v).replace(/[, %]/g, ''));
+    return isNaN(n) ? null : n;
+  }
+
+  // D1: App 23 stores the breakdown % as cleaned text "NN.NN%". Mirror that format
+  // on push so App 23 matches what its own form would have produced.
+  function formatPercent(raw) {
+    var n = num(raw);
+    return n === null ? '' : n.toFixed(PCT_DECIMALS) + '%';
+  }
+
+  // D2: pick the worst BCBS group present across holdings rows, per ROLLUP_RANKING.
+  function computeRollup(rows) {
+    var vals = (rows || [])
+      .map(function (r) { return r.value[F.t_bcbs] && r.value[F.t_bcbs].value; })
+      .filter(Boolean);
+    if (!vals.length) return '';
+    return vals.reduce(function (worst, v) {
+      return ROLLUP_RANKING.indexOf(v) > ROLLUP_RANKING.indexOf(worst) ? v : worst;
+    });
+  }
+
+  function quoteList(arr) {
+    return arr.map(function (s) { return '"' + String(s).replace(/"/g, '\\"') + '"'; }).join(', ');
+  }
+
+  // Fetch all App 23 records matching a query (handles >500 via offset).
+  function fetchAll(appId, query, fields) {
+    var out = [];
+    function page(offset) {
+      var q = query + ' order by $id asc limit 500 offset ' + offset;
+      return api('/k/v1/records', 'GET', { app: appId, query: q, fields: fields }).then(function (r) {
+        out = out.concat(r.records);
+        if (r.records.length === 500) return page(offset + 500);
+        return out;
+      });
+    }
+    return page(0);
+  }
+
+  function busy(on, msg) {
+    var id = 'ehu-busy';
+    var el = document.getElementById(id);
+    if (on) {
+      if (!el) {
+        el = document.createElement('div');
+        el.id = id;
+        el.className = 'etp-busy';
+        el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;';
+        document.body.appendChild(el);
+      }
+      el.textContent = msg || 'Working...';
+    } else if (el) {
+      el.parentNode.removeChild(el);
+    }
+  }
+
+  function toast(msg) {
+    busy(true, msg);
+    setTimeout(function () { busy(false); }, 2200);
+  }
+
+  function mkBtn(label, onClick, primary) {
+    var b = document.createElement('button');
+    b.textContent = label;
+    b.className = 'etp-btn ' + (primary ? 'etp-btn-primary' : 'etp-btn-ghost');
+    b.onclick = onClick;
+    return b;
+  }
+
+  function bar() {
+    var d = document.createElement('div');
+    d.className = 'ehu-bar etp-bar';
+    return d;
+  }
+
+  function go(recordId, mode) {
+    var url = '/k/' + THIS_APP + '/show#record=' + recordId;
+    if (mode === 'edit') url += '&mode=edit';
+    window.location.href = url;
+  }
+
+  function gotoIndex(query) {
+    var url = '/k/' + THIS_APP + '/';
+    if (query) url += '?view=' + encodeURIComponent('') ; // view kept default; filtering done client-side
+    window.location.href = '/k/' + THIS_APP + '/';
+  }
+
+  /* ============================= PULL / QUEUE ============================= */
+
+  // The master app only accepts sector values that are real options on its
+  // Sector field (App 86 and App 23 differ on the options-ETF label), so we
+  // intersect the allowlist with the live options before querying.
+  function masterSectorOptions() {
+    return api('/k/v1/app/form/fields', 'GET', { app: APP_MASTER }).then(function (resp) {
+      var f = resp.properties[A23.sector];
+      return (f && f.options) ? Object.keys(f.options) : [];
+    });
+  }
+
+  function sectorQuery(validSectors) {
+    var q = F_in(A23.sector, validSectors);
+    if (APP23_ACTIVE_ONLY) q += ' and ' + F_in(A23.profileStatus, ['Active']);
+    return q;
+  }
+  function F_in(code, vals) { return code + ' in (' + quoteList(vals) + ')'; }
+
+  function pullQueue(providerFilter) {
+    busy(true, 'Pulling qualifying profiles from App ' + APP_MASTER + '...');
+    return masterSectorOptions().then(function (opts) {
+      var allow = ALLOWLIST_SECTORS.filter(function (s) { return opts.indexOf(s) > -1; });
+      if (!allow.length) { busy(false); alert('No allowlisted sectors exist on App ' + APP_MASTER + '.'); return 0; }
+      return doPull(providerFilter, allow);
+    }).catch(function (e) { busy(false); alert('Pull failed: ' + msgOf(e)); });
+  }
+
+  function doPull(providerFilter, allow) {
+    // Existing this-app records keyed by app23 id.
+    return fetchAll(THIS_APP, 'order by $id asc', [F.a23id, F.status, F.inEdit, F.order])
+      .then(function (existing) {
+        var byKey = {};
+        var maxOrder = 0;
+        existing.forEach(function (r) {
+          byKey[r[F.a23id].value] = r;
+          var o = num(r[F.order].value) || 0;
+          if (o > maxOrder) maxOrder = o;
+        });
+
+        var q = sectorQuery(allow);
+        if (providerFilter) q += ' and ' + A23.issuer + ' like "' + providerFilter.replace(/"/g, '') + '"';
+
+        return fetchAll(APP23, q).then(function (src) {
+          var toAdd = [];
+          var seq = maxOrder;
+          src.forEach(function (rec) {
+            var key = rec.$id.value;
+            var cur = byKey[key];
+            if (cur) {
+              // Skip in-progress work; do not re-queue Updated unless re-added manually.
+              return;
+            }
+            seq += 1;
+            toAdd.push(buildNewRecord(rec, seq));
+          });
+          if (!toAdd.length) { busy(false); toast('Queue is up to date - nothing new to add.'); return 0; }
+          return chunkAdd(THIS_APP, toAdd).then(function () {
+            busy(false);
+            toast('Added ' + toAdd.length + ' profile(s) to the queue.');
+            return toAdd.length;
+          });
+        });
+      });
+  }
+
+  // Common master -> this-app field mapping (shared by initial pull and re-pull).
+  function mapMasterFields(rec) {
+    var r = {};
+    r[F.issuer] = { value: valOf(rec, A23.issuer) };
+    r[F.etpName] = { value: valOf(rec, A23.etpName) };
+    r[F.identifier] = { value: identifierOf(rec) };
+    r[F.sector] = { value: valOf(rec, A23.sector) };
+    PROFILE_FIELDS.forEach(function (m) { r[m.a106] = { value: valOf(rec, m.a23) }; });
+    r[F.secTable] = { value: mapSecuritiesIn(rec) };
+    r[F.table] = { value: mapHoldingsIn(rec) };
+    return r;
+  }
+
+  function buildNewRecord(rec, seq) {
+    var r = mapMasterFields(rec);
+    r[F.a23id] = { value: String(rec.$id.value) };
+    r[F.status] = { value: ST.QUEUE };
+    r[F.inEdit] = { value: 'No' };
+    r[F.order] = { value: String(seq) };
+    r[F.cadence] = { value: DEFAULT_CADENCE };
+    // Next due from the master's last holding review (Date_and_time_1) + cadence.
+    r[F.reviewDue] = { value: computeDue(valOf(rec, A23.updatedAt), DEFAULT_CADENCE) };
+    return r;
+  }
+
+  function valOf(rec, code) { return (rec[code] && rec[code].value != null) ? rec[code].value : ''; }
+
+  function identifierOf(rec) {
+    var t = rec[A23.securitiesTable];
+    if (t && t.value && t.value.length) {
+      for (var i = 0; i < t.value.length; i++) {
+        var row = t.value[i].value;
+        var sym = row[A23.secPrimarySymbol] && row[A23.secPrimarySymbol].value;
+        var isin = row[A23.secIsin] && row[A23.secIsin].value;
+        if (sym) return sym;
+        if (isin) return isin;
+      }
+    }
+    return '';
+  }
+
+  // App 23 Holdings rows -> this app rows, sorted desc by %.
+  // Each App 23 row id is kept in a23_row_id so the push can update by id and
+  // leave App 23's underlying-asset lookup untouched (App 23/App 34 names can differ).
+  function mapHoldingsIn(rec) {
+    var src = (rec[A23.holdingsTable] && rec[A23.holdingsTable].value) || [];
+    var rows = src.map(function (row) {
+      var v = row.value;
+      var o = {};
+      o[F.t_rowId] = { value: row.id != null ? String(row.id) : '' };
+      o[F.t_assetType] = { value: cell(v, A23.h_assetType) };
+      o[F.t_underlying] = { value: cell(v, A23.h_underlying) };
+      o[F.t_bcbs] = { value: cell(v, A23.h_bcbs) };
+      var pct = num(cell(v, A23.h_pct));
+      o[F.t_pct] = { value: pct === null ? '' : String(pct) };
+      o[F.t_asOf] = { value: cell(v, A23.h_asOf) || '' };
+      return { value: o, _pct: pct === null ? -1 : pct };
+    });
+    rows.sort(function (a, b) { return b._pct - a._pct; });
+    return rows.map(function (x) { return { value: x.value }; });
+  }
+
+  function cell(rowVal, code) { return (rowVal[code] && rowVal[code].value != null) ? rowVal[code].value : ''; }
+
+  // Master Securities (Table_1) -> this app's read-only Securities subtable.
+  // All rows are carried over (an ETP can list several ISIN/CUSIP/symbol/exchange).
+  function mapSecuritiesIn(rec) {
+    var src = (rec[A23.securitiesTable] && rec[A23.securitiesTable].value) || [];
+    return src.map(function (row) {
+      var v = row.value;
+      var o = {};
+      o[F.s_id] = { value: cell(v, A23.sec_id) };
+      o[F.s_type] = { value: cell(v, A23.sec_type) };
+      o[F.s_status] = { value: cell(v, A23.sec_status) };
+      o[F.s_symbol] = { value: cell(v, A23.secPrimarySymbol) };
+      o[F.s_exchange] = { value: cell(v, A23.sec_exchange) };
+      o[F.s_cusip] = { value: cell(v, A23.sec_cusip) };
+      o[F.s_isin] = { value: cell(v, A23.secIsin) };
+      o[F.s_maturity] = { value: cell(v, A23.sec_maturity) || '' };
+      o[F.s_futExpiry] = { value: cell(v, A23.sec_futExpiry) };
+      return { value: o };
+    });
+  }
+
+  function chunkAdd(appId, records) {
+    var i = 0;
+    function next() {
+      if (i >= records.length) return Promise.resolve();
+      var slice = records.slice(i, i + 100);
+      i += 100;
+      return api('/k/v1/records', 'POST', { app: appId, records: slice }).then(next);
+    }
+    return next();
+  }
+
+  function chunkUpdate(appId, records) {
+    var i = 0;
+    function next() {
+      if (i >= records.length) return Promise.resolve();
+      var slice = records.slice(i, i + 100);
+      i += 100;
+      return api('/k/v1/records', 'PUT', { app: appId, records: slice }).then(next);
+    }
+    return next();
+  }
+
+  /* ============================= REVIEW RECURRENCE ============================= */
+
+  // Records due for re-review: Updated, not being edited, cadence not Hold, and the
+  // Next Review Due date is today or earlier (records with no due date count too).
+  function dueQuery() {
+    return F.status + ' in ("' + ST.UPDATED + '") and ' + F.inEdit + ' in ("No") and '
+      + F.cadence + ' not in ("Hold") and (' + F.reviewDue + ' <= "' + todayYmd() + '" or ' + F.reviewDue + ' = "")';
+  }
+
+  function countDue() {
+    return fetchAll(THIS_APP, dueQuery(), [F.a23id]).then(function (r) { return r.length; });
+  }
+
+  // Re-queue everything that is due, RE-PULLING fresh master data first so the
+  // analyst reviews current App 23 values (not last month's snapshot). The App 106
+  // record is updated in place (status -> In Queue); cadence and order are kept.
+  function queueDueReviews() {
+    busy(true, 'Finding records due for review...');
+    return fetchAll(THIS_APP, dueQuery(), [F.a23id, F.order, F.cadence]).then(function (due) {
+      if (!due.length) { busy(false); toast('Nothing is due for review.'); return 0; }
+      // map this-app record by master id so we can update in place
+      var byMaster = {};
+      var ids = [];
+      due.forEach(function (d) {
+        var mid = d[F.a23id].value;
+        if (mid) { byMaster[mid] = d; ids.push('"' + String(mid).replace(/"/g, '') + '"'); }
+      });
+      busy(true, 'Re-pulling ' + ids.length + ' profile(s) from App ' + APP_MASTER + '...');
+      return fetchAll(APP_MASTER, '$id in (' + ids.join(',') + ')').then(function (masters) {
+        var updates = [];
+        masters.forEach(function (m) {
+          var d = byMaster[m.$id.value];
+          if (!d) return;
+          var body = mapMasterFields(m);
+          body[F.status] = { value: ST.QUEUE };
+          body[F.inEdit] = { value: 'No' };
+          updates.push({ id: d.$id.value, record: body });
+          delete byMaster[m.$id.value];
+        });
+        // any due records whose master row no longer exists are left as-is
+        var missing = Object.keys(byMaster).length;
+        return chunkUpdate(THIS_APP, updates).then(function () {
+          busy(false);
+          var msg = 'Re-queued ' + updates.length + ' due record(s) with fresh App ' + APP_MASTER + ' data.';
+          if (missing) msg += '\n' + missing + ' due record(s) had no matching master profile and were skipped.';
+          toast(msg);
+          return updates.length;
+        });
+      });
+    }).catch(function (e) { busy(false); alert('Queue due reviews failed: ' + msgOf(e)); });
+  }
+
+  // Pull the latest master data into a single existing record (keeps status,
+  // cadence, due date, order). Used by the "Refresh from master" detail button.
+  function refreshOne(app106Id, masterId) {
+    if (!masterId) { alert('This record has no linked master id.'); return Promise.resolve(); }
+    busy(true, 'Refreshing from App ' + APP_MASTER + '...');
+    return fetchAll(APP_MASTER, '$id in ("' + String(masterId).replace(/"/g, '') + '")').then(function (m) {
+      if (!m.length) { busy(false); alert('Master profile ' + masterId + ' not found in App ' + APP_MASTER + '.'); return; }
+      var body = mapMasterFields(m[0]);
+      return api('/k/v1/record', 'PUT', { app: THIS_APP, id: app106Id, record: body }).then(function () {
+        busy(false);
+        toast('Refreshed from master. Reloading...');
+        setTimeout(function () { window.location.reload(); }, 700);
+      });
+    }).catch(function (e) { busy(false); alert('Refresh failed: ' + msgOf(e)); });
+  }
+
+  /* ============================= FETCH / ASSIGN ============================= */
+
+  function fetchAndOpen() {
+    busy(true, 'Finding the next record...');
+    var q = F.status + ' in ("' + ST.QUEUE + '") and ' + F.inEdit + ' in ("No") order by ' + F.order + ' asc limit 500';
+    return api('/k/v1/records', 'GET', { app: THIS_APP, query: q })
+      .then(function (r) {
+        var pool = r.records;
+        if (!pool.length) { busy(false); alert('No records left in the Queue'); return; }
+        return chooseRecord(pool).then(function (chosen) {
+          return assign(chosen).then(function () {
+            busy(false);
+            go(chosen.$id.value, 'edit');
+          });
+        });
+      })
+      .catch(function (e) { busy(false); alert('Fetch failed: ' + msgOf(e)); });
+  }
+
+  function chooseRecord(pool) {
+    var u = me().code;
+    return api('/k/v1/records', 'GET', {
+      app: THIS_APP,
+      query: F.lastBy + ' in ("' + u + '") order by ' + F.lastAt + ' desc limit 1'
+    }).then(function (r) {
+      var recent = r.records[0];
+      var within24 = false, issuer = '';
+      if (recent && recent[F.lastAt] && recent[F.lastAt].value) {
+        var t = new Date(recent[F.lastAt].value).getTime();
+        within24 = (Date.now() - t) <= 24 * 3600 * 1000;
+        issuer = recent[F.issuer] ? recent[F.issuer].value : '';
+      }
+      if (within24 && issuer) {
+        var same = pool.filter(function (p) { return (p[F.issuer] && p[F.issuer].value) === issuer; });
+        if (same.length) return pick(same, true); // random among same issuer
+        return pick(pool, false);                  // next in order
+      }
+      return pick(pool, true);                      // random
+    });
+  }
+
+  function pick(list, random) {
+    if (random) return list[Math.floor(Math.random() * list.length)];
+    // next in order: pool already sorted asc by order_seq
+    return list[0];
+  }
+
+  function assign(rec) {
+    var body = {};
+    body[F.status] = { value: ST.ASSIGNED };
+    body[F.assignedTo] = { value: [{ code: me().code }] };
+    body[F.assignedAt] = { value: nowIso() };
+    body[F.inEdit] = { value: 'Yes' };
+    return api('/k/v1/record', 'PUT', { app: THIS_APP, id: rec.$id.value, record: body });
+  }
+
+  function releaseLock(recordId, toStatus) {
+    var body = {};
+    body[F.inEdit] = { value: 'No' };
+    body[F.assignedTo] = { value: [] };
+    if (toStatus) body[F.status] = { value: toStatus };
+    return api('/k/v1/record', 'PUT', { app: THIS_APP, id: recordId, record: body });
+  }
+
+  /* ============================= SAVE / PUSH ============================= */
+
+  // On edit submit: stamp metadata + as_of_date, sort rows desc, then push to App 23.
+  // We let the native save complete first (kintone validates the lookup), then push.
+  function onEditSubmit(event) {
+    var rec = event.record;
+    var serverNow = nowIso();
+
+    // D1: per-row As of Date - stamp now when the row has a %, clear otherwise.
+    // Mutate .value only; replacing the cell object drops its type and Kintone
+    // rejects the save ("as_of_date.type is invalid").
+    var rows = (rec[F.table].value || []).map(function (row) {
+      var hasPct = num(row.value[F.t_pct].value) !== null;
+      if (row.value[F.t_asOf]) row.value[F.t_asOf].value = hasPct ? serverNow : '';
+      return row;
+    });
+    rows.sort(function (a, b) {
+      return (num(b.value[F.t_pct].value) || -1) - (num(a.value[F.t_pct].value) || -1);
+    });
+    rec[F.table].value = rows;
+
+    // D2: roll up the worst BCBS group into the mirrored ETP BCBS Group field.
+    if (rec.etp_bcbs_group) rec.etp_bcbs_group.value = computeRollup(rows);
+    // D3: stamp App 23's "Holdings last updated by / Holding review date" mirrors.
+    if (rec.holdings_last_updated_by_a23) rec.holdings_last_updated_by_a23.value = me().name;
+    if (rec.holding_review_dt) rec.holding_review_dt.value = serverNow;
+
+    // Schedule the next review from now + this record's cadence.
+    var cad = (rec[F.cadence] && rec[F.cadence].value) || DEFAULT_CADENCE;
+    if (rec[F.reviewDue]) rec[F.reviewDue].value = computeDue(serverNow, cad);
+
+    rec[F.lastAt].value = serverNow;
+    rec[F.lastBy].value = [{ code: me().code }];
+    rec[F.inEdit].value = 'No';
+    rec[F.assignedTo].value = [];
+    // status flips to Updated only after the App 23 push succeeds (see success hook)
+    return event;
+  }
+
+  function onEditSubmitSuccess(event) {
+    var rec = event.record;
+    var a23id = rec[F.a23id].value;
+    pushToApp23(a23id, rec)
+      .then(function () {
+        return api('/k/v1/record', 'PUT', {
+          app: THIS_APP, id: rec.$id.value, record: setVal({}, F.status, ST.UPDATED)
+        });
+      })
+      .then(function () { toast('Saved and pushed to App 23.'); })
+      .catch(function (e) {
+        // keep record Assigned, surface error, re-lock so it is not lost
+        var body = {};
+        body[F.status] = { value: ST.ASSIGNED };
+        body[F.inEdit] = { value: 'Yes' };
+        body[F.assignedTo] = { value: [{ code: me().code }] };
+        api('/k/v1/record', 'PUT', { app: THIS_APP, id: rec.$id.value, record: body });
+        alert('Saved locally but push to App 23 FAILED - record kept as Assigned.\n\n' + msgOf(e));
+      });
+    return event;
+  }
+
+  function setVal(o, code, v) { o[code] = { value: v }; return o; }
+
+  // Update App 23 Table_7, write the editable profile fields, and replicate
+  // App 23's own form automations (D1/D2/D3) since a REST write does not trigger
+  // its JS.
+  //
+  // Holdings rows are updated BY ROW ID (a23_row_id) with only the analyst-edited
+  // columns; the Underlying Cryptoasset lookup (Drop_down_24) is never written, so
+  // App 23 keeps its own underlying value. This matters because App 23's stored
+  // asset name often differs from App 34's current name, and writing the lookup
+  // would fail validation. Rows with an id are updated (underlying preserved);
+  // rows without one are new (underlying left blank in App 23, set there if needed);
+  // existing rows not included are removed.
+  function pushToApp23(a23id, rec) {
+    var rows = (rec[F.table] && rec[F.table].value) || [];
+    var serverNow = nowIso();
+    var t7 = rows.map(function (row) {
+      var v = row.value;
+      var pct = num(v[F.t_pct].value);
+      var o = {};
+      o[A23.h_assetType] = { value: v[F.t_assetType].value || '' };
+      o[A23.h_bcbs] = { value: v[F.t_bcbs].value || '' };       // BCBS group (copy target)
+      o[A23.h_pct] = { value: formatPercent(pct) };             // D1: "NN.NN%"
+      o[A23.h_asOf] = { value: pct === null ? '' : serverNow }; // D1: stamp if % present
+      // NOTE: A23.h_underlying (Drop_down_24 lookup) is omitted for EXISTING rows
+      // (updated by id) so the master keeps its own underlying value. For NEW rows
+      // it is included when present: Paste allocation resolves to a valid reference
+      // -app key, so the lookup validates; a manually typed name that is not a valid
+      // key will make the push report an error (record kept Assigned) rather than
+      // silently drop the asset name.
+      var rowId = v[F.t_rowId] && v[F.t_rowId].value;
+      var out = { value: o };
+      if (rowId) {
+        out.id = String(rowId); // update in place -> underlying preserved
+      } else {
+        var u = v[F.t_underlying] && v[F.t_underlying].value;
+        if (u) o[A23.h_underlying] = { value: u };
+      }
+      return out;
+    });
+    var body = {};
+    body[A23.holdingsTable] = { value: t7 };
+    // editable profile fields (analyst edits flow straight back)
+    PROFILE_FIELDS.forEach(function (m) {
+      if (!m.push) return;
+      var cell = rec[m.a106];
+      body[m.a23] = { value: cell && cell.value != null ? cell.value : '' };
+    });
+    // D2: BCBS rollup -> ETP BCBS Group (BCBS_Lowest_Value)
+    body[A23.bcbsRollup] = { value: computeRollup(rows) };
+    // D3: last updated by / at, as App 23's own form would stamp them
+    body[A23.updatedBy] = { value: me().name };
+    body[A23.updatedAt] = { value: serverNow };
+    return api('/k/v1/record', 'PUT', { app: APP23, id: a23id, record: body });
+  }
+
+  function msgOf(e) {
+    if (!e) return 'Unknown error';
+    if (e.message) return e.message;
+    try { return JSON.stringify(e); } catch (x) { return String(e); }
+  }
+
+  /* ============================= SCREENS ============================= */
+
+  // Overview (index) page
+  kintone.events.on('app.record.index.show', function (event) {
+    if (document.querySelector('.ehu-bar')) return event;
+    var sp = kintone.app.getHeaderMenuSpaceElement();
+    if (!sp) return event;
+    var b = bar();
+    b.appendChild(mkBtn('Add to Queue', function () {
+      var p = prompt('Add to Queue.\nEnter an ETP Provider to filter (App 23 "ETP Provider"),\nor leave blank to queue all qualifying profiles:', '');
+      if (p === null) return;
+      pullQueue(p.trim());
+    }, true));
+    b.appendChild(mkBtn('Refresh Queue', function () { pullQueue(''); }));
+    var dueBtn = mkBtn('Queue Due Reviews', function () { queueDueReviews(); }, true);
+    b.appendChild(dueBtn);
+    b.appendChild(mkBtn('Fetch Record', function () { fetchAndOpen(); }, true));
+    b.appendChild(mkBtn('Updated Records', function () {
+      // jump to a client filter: open index and show only Updated
+      sessionStorage.setItem('ehu-filter', 'updated');
+      gotoIndex();
+    }));
+    sp.appendChild(b);
+
+    // Show how many records are currently due for review on the button.
+    countDue().then(function (n) {
+      dueBtn.textContent = 'Queue Due Reviews (' + n + ')';
+    }).catch(function () { /* leave default label */ });
+
+    // Optional: client-side "Updated Records" emphasis note
+    if (sessionStorage.getItem('ehu-filter') === 'updated') {
+      sessionStorage.removeItem('ehu-filter');
+      toast('Tip: use the view selector / filter on Status = "Updated".');
+    }
+    return event;
+  });
+
+  // Edit page - hook save + add Cancel
+  kintone.events.on('app.record.edit.submit', onEditSubmit);
+  kintone.events.on('app.record.edit.submit.success', onEditSubmitSuccess);
+
+  // Auto-fill BCBS Group from the reference app (App 85) when the analyst sets an
+  // Underlying Cryptoasset. Non-blocking: if the name is not found, BCBS is left
+  // as-is (so App 23/App 85 name mismatches never block the edit). This restores
+  // the old lookup's "pick the asset, fill BCBS" convenience without its validation.
+  kintone.events.on(
+    ['app.record.edit.change.' + F.t_underlying, 'app.record.create.change.' + F.t_underlying],
+    function (event) {
+      var row = event.changes && event.changes.row;
+      if (!row || !row.value[F.t_underlying]) return event;
+      var name = (row.value[F.t_underlying].value || '').trim();
+      if (!name) return event;
+      var q = A34.key + ' = "' + name.replace(/"/g, '\\"') + '" and '
+            + A34.foundInEtps + ' in ("Yes") limit 1';
+      return api('/k/v1/records', 'GET', { app: APP_REF, query: q })
+        .then(function (r) {
+          if (r.records.length && row.value[F.t_bcbs]) {
+            var g = r.records[0][A34.bcbs] && r.records[0][A34.bcbs].value;
+            if (g) row.value[F.t_bcbs].value = g;
+          }
+          return event;
+        })
+        .catch(function () { return event; });
+    }
+  );
+
+  kintone.events.on('app.record.edit.show', function (event) {
+    if (!document.querySelector('.ehu-bar')) {
+      var sp = kintone.app.record.getHeaderMenuSpaceElement();
+      if (sp) {
+        var b = bar();
+        b.appendChild(mkBtn('Paste allocation', function () { openPasteModal(); }, true));
+        b.appendChild(mkBtn('Cancel', function () {
+          var id = kintone.app.record.getId();
+          releaseLock(id, ST.QUEUE).then(function () { go(id, 'view'); });
+        }));
+        sp.appendChild(b);
+      }
+    }
+    // make system fields read-only in the form
+    lockSystemFields(event);
+    return event;
+  });
+
+  // Detail (view-only) page - navigation buttons
+  kintone.events.on('app.record.detail.show', function (event) {
+    hideRowId();
+    if (document.querySelector('.ehu-bar')) return event;
+    var sp = kintone.app.record.getHeaderMenuSpaceElement();
+    if (!sp) return event;
+    var id = kintone.app.record.getId();
+    var b = bar();
+    b.appendChild(mkBtn('ETP Holdings Update', function () { gotoIndex(); }, true));
+    b.appendChild(mkBtn('Fetch Next Record', function () { fetchAndOpen(); }, true));
+    b.appendChild(mkBtn('Refresh from master', function () {
+      var r = kintone.app.record.get().record;
+      var mid = r[F.a23id] && r[F.a23id].value;
+      if (!confirm('Re-pull the latest data for this profile from App ' + APP_MASTER + '?\nThis overwrites the holdings and profile fields shown here.')) return;
+      refreshOne(id, mid);
+    }));
+    b.appendChild(mkBtn('Edit', function () {
+      // re-open in edit + re-lock to this user
+      var body = {};
+      body[F.inEdit] = { value: 'Yes' };
+      body[F.status] = { value: ST.ASSIGNED };
+      body[F.assignedTo] = { value: [{ code: me().code }] };
+      api('/k/v1/record', 'PUT', { app: THIS_APP, id: id, record: body })
+        .then(function () { go(id, 'edit'); })
+        .catch(function () { go(id, 'edit'); });
+    }));
+    sp.appendChild(b);
+    return event;
+  });
+
+  function lockSystemFields(event) {
+    var rec = event.record;
+    [F.a23id, F.status, F.assignedTo, F.assignedAt, F.inEdit, F.lastBy, F.lastAt, F.order, F.reviewDue,
+      F.issuer, F.etpName, F.identifier, F.sector,
+      'holdings_last_updated_by_a23', 'etp_bcbs_group', 'holding_review_dt']
+      .forEach(function (code) {
+        if (rec[code]) rec[code].disabled = true;
+      });
+    // Securities is reference data maintained in the master app - lock every cell.
+    if (rec[F.secTable] && rec[F.secTable].value) {
+      rec[F.secTable].value.forEach(function (row) {
+        Object.keys(row.value).forEach(function (c) {
+          if (row.value[c]) row.value[c].disabled = true;
+        });
+      });
+    }
+    hideRowId();
+    return event;
+  }
+
+  // A23 Row ID is an internal pointer (the App 23 subtable row id), not for humans.
+  function hideRowId() {
+    try { kintone.app.record.setFieldShown(F.t_rowId, false); } catch (e) { /* older UI */ }
+  }
+
+  /* ============================= PASTE ALLOCATION ============================= */
+  // Paste a name / ticker / weight block; tickers are matched against the reference
+  // app (App 85 / App 34) and rows are added straight into the open edit form's
+  // Holdings table (BCBS auto-filled on a match). Nothing is written to the server
+  // here - the analyst reviews, then the normal Save pushes to the master app.
+
+  var PASTE_TYPE_OPTIONS = ['Spot', 'Futures', 'Options', 'Funds', 'Permitted Swaps'];
+
+  function pnorm(s) { return String(s || '').replace(/[^A-Za-z0-9]/g, '').toLowerCase(); }
+
+  // Parser - auto-detects delimited COLUMN paste (header with Symbol/Weight) vs a
+  // loose STREAM paste (pairs each weight with the nearest preceding ticker).
+  function parseSource(text) {
+    var raw = String(text).replace(/\u00A0/g, ' ').replace(/\u2212/g, '-');
+    var lines = raw.split(/\r?\n/).filter(function (l) { return l.trim() !== ''; });
+    var numRe = /^(-?\d{1,3}(?:[.,]\d{1,4})?)%?$/;
+    var tickRe = /^(?=[A-Z0-9]*[A-Z])[A-Z0-9]{2,6}$/;
+    var clean = function (s) { return String(s == null ? '' : s).replace(/[^A-Za-z0-9]/g, '').toUpperCase(); };
+    var asNum = function (s) { var m = String(s == null ? '' : s).trim().match(numRe); return m ? m[1].replace(',', '.') : null; };
+    var tickFromField = function (f) {
+      var p = /\(([A-Za-z0-9]{2,6})\)\s*$/.exec(f) || /\(([A-Za-z0-9]{2,6})\)/.exec(f);
+      if (p) return { ticker: p[1].toUpperCase(), name: String(f).slice(0, String(f).lastIndexOf('(')).trim() };
+      var c = clean(f);
+      return tickRe.test(c) ? { ticker: c, name: '' } : null;
+    };
+    var delim = raw.indexOf('\t') > -1 ? '\t'
+              : raw.indexOf(';') > -1 ? ';'
+              : /[^\d],|,[^\d]/.test(raw) ? ','
+              : null;
+    var hdr = null;
+    if (delim && lines.length >= 2) {
+      var head = lines[0].split(delim).map(function (s) { return s.trim(); });
+      var looks = head.some(function (h) { return /name|symbol|ticker|weight|ponder|price|reference|index/i.test(h); }) &&
+                  !head.some(function (h) { return asNum(h); });
+      if (looks) {
+        var si = -1, wi = -1, ni = -1;
+        head.forEach(function (h, i) {
+          if (si < 0 && /symbol|ticker/i.test(h)) si = i;
+          if (/weight|ponder/i.test(h)) wi = i;
+          if (ni < 0 && /name/i.test(h)) ni = i;
+        });
+        hdr = { si: si < 0 ? 1 : si, wi: wi < 0 ? head.length - 1 : wi, ni: ni < 0 ? 0 : ni };
+      }
+    }
+    var out = [];
+    if (hdr) {
+      lines.slice(1).forEach(function (line) {
+        var f = line.split(delim).map(function (s) { return s.trim(); });
+        var w = asNum(f[hdr.wi]);
+        if (!w) return;
+        var tf = tickFromField(f[hdr.si]);
+        if (!tf) for (var i = 1; i < f.length && !tf; i++) tf = tickFromField(f[i]);
+        if (tf) out.push({ ticker: tf.ticker, pct: w, name: f[hdr.ni] || tf.name });
+      });
+      return out;
+    }
+    var fields = delim
+      ? lines.reduce(function (a, l) { return a.concat(l.split(delim)); }, [])
+      : raw.split(/\s+/);
+    var pend = null, prev = '';
+    fields.forEach(function (f) {
+      var s = String(f == null ? '' : f).trim();
+      if (!s) return;
+      var n = asNum(s);
+      if (n) { if (pend) { out.push({ ticker: pend.ticker, pct: n, name: pend.name || prev }); pend = null; } prev = ''; return; }
+      var tf = tickFromField(s);
+      if (tf) pend = { ticker: tf.ticker, name: tf.name || prev };
+      else prev = s;
+    });
+    return out;
+  }
+
+  // ticker -> [{key, nameNorm, bcbs, found}] from the reference app.
+  function loadRefKeyMap() {
+    return fetchAll(APP_REF, '', [A34.key, A34.bcbs, A34.foundInEtps]).then(function (records) {
+      var map = {};
+      records.forEach(function (r) {
+        var key = (r[A34.key] || {}).value;
+        if (!key) return;
+        var t = /\(([A-Za-z0-9]+)\)\s*$/.exec(key) || /\(([A-Za-z0-9]+)\)/.exec(key);
+        if (!t) return;
+        var tick = t[1].toUpperCase();
+        var namePart = key.slice(0, key.lastIndexOf('(')).trim();
+        (map[tick] = map[tick] || []).push({
+          key: key,
+          nameNorm: pnorm(namePart),
+          bcbs: (r[A34.bcbs] || {}).value || '',
+          found: ((r[A34.foundInEtps] || {}).value || '') === 'Yes'
+        });
+      });
+      return map;
+    });
+  }
+
+  // resolve a parsed row to one reference candidate (prefer Found-in-ETPs = Yes,
+  // then break same-ticker collisions by name).
+  function resolveRef(p, map) {
+    var arr = map[p.ticker];
+    if (!arr || !arr.length) return { status: 'unmatched' };
+    var pool = arr.filter(function (c) { return c.found; });
+    if (!pool.length) pool = arr;
+    if (pool.length === 1) return { status: 'ok', cand: pool[0] };
+    var hit = pool.filter(function (c) { return c.nameNorm === pnorm(p.name); });
+    if (hit.length === 1) return { status: 'ok', cand: hit[0] };
+    return { status: 'ambiguous', options: pool.map(function (c) { return c.key; }) };
+  }
+
+  function openPasteModal() {
+    if (document.getElementById('etp-paste-ov')) return;
+    var ov = document.createElement('div');
+    ov.id = 'etp-paste-ov';
+    ov.className = 'etp-modal-ov';
+    var typeOpts = '<option value="">(leave blank)</option>' +
+      PASTE_TYPE_OPTIONS.map(function (o) { return '<option value="' + o + '">' + o + '</option>'; }).join('');
+    var box = document.createElement('div');
+    box.className = 'etp-modal';
+    box.innerHTML =
+      '<h3 class="etp-modal-title">Paste allocation</h3>' +
+      '<p class="etp-modal-sub">Paste a name / ticker / weight block. Tickers are matched against the reference app (App ' + APP_REF + '); BCBS Group fills automatically on a match.</p>' +
+      '<div class="etp-modal-controls">' +
+        '<span><label>As of date</label><input id="etp-paste-date" type="date"/></span>' +
+        '<span><label>Asset breakdown</label><select id="etp-paste-type">' + typeOpts + '</select></span>' +
+        '<label class="etp-modal-check"><input id="etp-paste-replace" type="checkbox" checked/> Replace existing rows</label>' +
+      '</div>' +
+      '<textarea id="etp-paste-text" class="etp-modal-text" placeholder="Bitcoin (BTC) 52.69%&#10;Ethereum ETH 18.84&#10;..."></textarea>' +
+      '<div class="etp-modal-actions">' +
+        '<button id="etp-paste-cancel" class="etp-btn etp-btn-ghost">Cancel</button>' +
+        '<button id="etp-paste-run" class="etp-btn etp-btn-primary">Add rows</button>' +
+      '</div>';
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    box.querySelector('#etp-paste-date').value = new Date().toISOString().slice(0, 10);
+    var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); };
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    box.querySelector('#etp-paste-cancel').onclick = close;
+    box.querySelector('#etp-paste-run').onclick = function () {
+      var text = box.querySelector('#etp-paste-text').value;
+      var date = box.querySelector('#etp-paste-date').value;
+      var type = box.querySelector('#etp-paste-type').value;
+      var replace = box.querySelector('#etp-paste-replace').checked;
+      close();
+      runPaste(text, date, type, replace);
+    };
+  }
+
+  function runPaste(text, asOfDate, breakdownType, replace) {
+    var parsed = parseSource(text);
+    if (!parsed.length) { alert('No "name + ticker + weight" rows found in the paste.'); return; }
+    busy(true, 'Matching ' + parsed.length + ' row(s) against App ' + APP_REF + '...');
+    loadRefKeyMap().then(function (map) {
+      busy(false);
+      var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      var now = new Date();
+      var clock = pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+      var dateVal = asOfDate ? new Date(asOfDate + 'T' + clock).toISOString() : '';
+
+      var rec = kintone.app.record.get().record;
+      var rows = replace ? [] : (rec[F.table].value || []).slice();
+      var unmatched = [], ambiguous = [], nobcbs = 0;
+
+      parsed.forEach(function (p) {
+        var res = resolveRef(p, map);
+        var underlying, bcbs = '';
+        if (res.status === 'ok') { underlying = res.cand.key; bcbs = res.cand.bcbs || ''; }
+        else {
+          underlying = p.name ? (p.name + ' (' + p.ticker + ')') : p.ticker;
+          if (res.status === 'ambiguous') ambiguous.push(p.ticker); else unmatched.push(p.ticker);
+        }
+        if (!bcbs) nobcbs++;
+        var numPct = num(p.pct);
+        var c = {};
+        c[F.t_rowId] = { value: '' };
+        c[F.t_assetType] = { value: breakdownType || '' };
+        c[F.t_underlying] = { value: underlying };
+        c[F.t_bcbs] = { value: bcbs };
+        c[F.t_pct] = { value: numPct === null ? '' : String(numPct) };
+        c[F.t_asOf] = { value: numPct === null ? '' : dateVal };
+        rows.push({ value: c });
+      });
+
+      rows.sort(function (a, b) { return (num(b.value[F.t_pct].value) || -1) - (num(a.value[F.t_pct].value) || -1); });
+      rec[F.table].value = rows;
+      kintone.app.record.set({ record: rec });
+
+      var msg = parsed.length + ' row(s) added' + (replace ? ' (replaced existing).' : '.');
+      if (nobcbs) msg += '\nNo BCBS match for ' + nobcbs + ' row(s) - set BCBS manually.';
+      if (unmatched.length) msg += '\nNot in App ' + APP_REF + ': ' + unmatched.join(', ');
+      if (ambiguous.length) msg += '\nAmbiguous ticker (verify): ' + ambiguous.join(', ');
+      alert(msg + '\n\nReview the rows, then Save to push to the master app.');
+    }).catch(function (e) { busy(false); alert('Paste failed: ' + msgOf(e)); });
+  }
+
+})();

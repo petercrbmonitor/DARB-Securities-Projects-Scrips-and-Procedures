@@ -1,0 +1,156 @@
+/* =====================================================================
+   ETP Holdings Update - Kintone CSS customization (App 106)
+   Theme: clean / floating-bubble / teal
+   Attach under: App Settings -> JavaScript and CSS Customization -> Desktop (CSS)
+   then Deploy/Update the app.
+
+   This file themes the DOM that ETP_Holdings_Update.js actually injects on
+   the NATIVE Kintone screens:
+     - the header toolbar (.etp-bar) and its buttons (.etp-btn ...)
+     - the top progress banner (.etp-busy)
+     - the Paste allocation modal (.etp-modal-ov / .etp-modal ...)
+   The native record form is left in place; the optional block at the very
+   bottom applies the long-edit-session preferences to it.
+   ===================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap');
+
+/* ---------- Design tokens ---------- */
+:root{
+  --etp-bg:#e7f0ee;
+  --etp-bg-2:#f3f8f7;
+  --etp-surface:#ffffff;
+  --etp-ink:#0a2c29;
+  --etp-muted:#5d807c;
+  --etp-faint:#8aa9a5;
+  --etp-line:#e0ecea;
+  --etp-line-soft:#eef5f4;
+  --etp-teal:#0f766e;
+  --etp-teal-deep:#0b4f49;
+  --etp-teal-dark:#063a35;
+  --etp-teal-soft:#d6ebe7;
+  --etp-teal-tint:#f0f8f6;
+  --etp-accent:#14b8a6;
+  --etp-shadow-sm:0 1px 2px rgba(8,48,44,.04);
+  --etp-shadow:0 18px 40px -18px rgba(10,60,55,.28), 0 4px 14px -6px rgba(10,60,55,.12);
+  --etp-r-md:18px;
+  --etp-r-sm:12px;
+  --etp-r-pill:999px;
+  --etp-font:'Hanken Grotesk',Calibri,-apple-system,BlinkMacSystemFont,Arial,sans-serif;
+}
+
+/* ---------- Header toolbar (floating bubble) ----------
+   JS injects: <div class="ehu-bar etp-bar"> <button class="etp-btn ...">…</div> */
+.etp-bar{
+  display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--etp-surface);
+  border:1px solid var(--etp-line);
+  border-radius:var(--etp-r-pill);
+  box-shadow:var(--etp-shadow);
+  padding:8px 12px;margin:10px 0 6px;
+  animation:etpFloatIn .6s cubic-bezier(.2,.8,.2,1) both;
+}
+
+/* ---------- Buttons ---------- */
+.etp-btn{
+  font-family:var(--etp-font);font-size:.9rem;font-weight:600;cursor:pointer;
+  padding:10px 22px;border-radius:var(--etp-r-pill);transition:.22s;
+  border:1px solid transparent;display:inline-flex;align-items:center;gap:9px;line-height:1;
+}
+.etp-btn-ghost{background:var(--etp-surface);color:var(--etp-teal-deep);border-color:var(--etp-line)}
+.etp-btn-ghost:hover{border-color:var(--etp-teal);background:var(--etp-teal-tint)}
+.etp-btn-primary{
+  background:linear-gradient(150deg,var(--etp-teal) 0%,var(--etp-teal-dark) 100%);
+  color:#fff;box-shadow:0 12px 26px -12px rgba(11,79,73,.9);
+}
+.etp-btn-primary:hover{transform:translateY(-1px);box-shadow:0 18px 30px -12px rgba(11,79,73,.95)}
+.etp-btn-primary:active{transform:translateY(0)}
+
+/* ---------- Top progress banner ----------
+   JS injects: <div id="ehu-busy" class="etp-busy"> with position:fixed inline. */
+.etp-busy{
+  background:linear-gradient(90deg,var(--etp-teal) 0%,var(--etp-teal-deep) 100%);
+  color:#eafffb;font-family:var(--etp-font);font-size:.86rem;font-weight:600;
+  letter-spacing:.01em;text-align:center;padding:9px 14px;
+  box-shadow:0 6px 18px -8px rgba(11,79,73,.6);
+}
+
+/* ---------- Paste allocation modal ---------- */
+.etp-modal-ov{
+  position:fixed;inset:0;z-index:10000;
+  background:rgba(6,40,36,.42);backdrop-filter:blur(2px);
+  display:flex;align-items:center;justify-content:center;
+  animation:etpFade .2s ease both;
+}
+.etp-modal{
+  font-family:var(--etp-font);color:var(--etp-ink);
+  background:var(--etp-surface);border:1px solid var(--etp-line);
+  border-radius:var(--etp-r-md);box-shadow:var(--etp-shadow);
+  width:560px;max-width:92vw;padding:26px 28px;
+  animation:etpFloatIn .35s cubic-bezier(.2,.8,.2,1) both;
+}
+.etp-modal *{box-sizing:border-box}
+.etp-modal-title{font-size:1.25rem;font-weight:700;letter-spacing:-.02em;margin:0 0 6px}
+.etp-modal-sub{font-size:.84rem;color:var(--etp-muted);font-weight:500;margin:0 0 16px;line-height:1.45}
+
+.etp-modal-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:16px;margin-bottom:14px}
+.etp-modal-controls span{display:flex;flex-direction:column;gap:5px}
+.etp-modal-controls label{font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--etp-faint)}
+.etp-modal-controls input[type=date],
+.etp-modal-controls select{
+  font-family:var(--etp-font);font-size:.9rem;color:var(--etp-ink);
+  border:1px solid var(--etp-line);border-radius:var(--etp-r-sm);padding:9px 12px;background:var(--etp-surface);outline:none;
+}
+.etp-modal-controls input[type=date]:focus,
+.etp-modal-controls select:focus{border-color:var(--etp-teal)}
+.etp-modal-check{
+  flex-direction:row !important;align-items:center;gap:8px !important;
+  font-size:.82rem !important;font-weight:600 !important;letter-spacing:0 !important;
+  text-transform:none !important;color:var(--etp-teal-deep) !important;cursor:pointer;padding-bottom:9px;
+}
+.etp-modal-check input{accent-color:var(--etp-teal);width:16px;height:16px;cursor:pointer}
+
+.etp-modal-text{
+  width:100%;height:210px;resize:vertical;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.82rem;line-height:1.5;
+  color:var(--etp-ink);background:var(--etp-teal-tint);
+  border:1px solid var(--etp-line);border-radius:var(--etp-r-sm);padding:12px 14px;outline:none;
+}
+.etp-modal-text:focus{border-color:var(--etp-teal);background:var(--etp-surface)}
+.etp-modal-text::placeholder{color:var(--etp-faint)}
+
+.etp-modal-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:18px}
+
+/* ---------- Animations ---------- */
+@keyframes etpFloatIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes etpFade{from{opacity:0}to{opacity:1}}
+
+/* ---------- Responsive ---------- */
+@media(max-width:600px){
+  .etp-modal{padding:20px}
+  .etp-modal-controls{gap:12px}
+}
+
+/* =====================================================================
+   OPTIONAL - native Kintone styling for long edit sessions.
+   Reflects standing prefs: no outer wrapper border, faint internal
+   field borders, sticky table headers, tables fit to content.
+   These target Kintone's own classes, so !important is used to win
+   the cascade. Remove this whole block to leave the native form as-is.
+   ===================================================================== */
+
+/* No outer wrapper border on the record form */
+.gaia-argoui-app-show .control-gaia,
+.gaia-argoui-app-edit .control-gaia{border:0 !important;box-shadow:none !important}
+
+/* Faint internal field borders */
+.gaia-argoui-app-show .control-value-gaia,
+.gaia-argoui-app-edit .control-value-gaia{
+  border:1px solid var(--etp-line-soft) !important;border-radius:8px !important;
+}
+
+/* Sticky header row on native subtables */
+.subtable-gaia thead th{position:sticky !important;top:0 !important;z-index:2 !important}
+
+/* Tables fit to content rather than stretching full width */
+.subtable-gaia{width:auto !important;max-width:100% !important}
