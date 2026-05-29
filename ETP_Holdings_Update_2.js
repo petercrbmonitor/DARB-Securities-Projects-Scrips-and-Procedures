@@ -155,10 +155,10 @@
   // Fields flagged derived:true are NOT pushed generically - they are recomputed
   // on push by the D1/D2/D3 logic above, and locked in edit.
   var PROFILE_FIELDS = [
-    { a106: 'holds_spot_crypto',            a23: 'Drop_down_34',         push: true },
+    { a106: 'holds_spot_crypto',            a23: 'Drop_down_34',         push: true },  // derived by applyDerived()
     { a106: 'etp_bcbs_group',               a23: 'BCBS_Lowest_Value',    push: false, derived: true },
-    { a106: 'portfolio_type',               a23: 'Drop_down_36',         push: true },
-    { a106: 'etp_holdings_type',            a23: 'Text_52',              push: true },
+    { a106: 'portfolio_type',               a23: 'Drop_down_36',         push: true },  // derived by applyDerived()
+    { a106: 'etp_holdings_type',            a23: 'Text_52',              push: true },  // derived by applyDerived()
     { a106: 'staking_yield',                a23: 'Text_53',              push: true },
     { a106: 'expense_ratio',                a23: 'Text_16',              push: true },
     { a106: 'aum_expense_updated',          a23: 'Date_2',               push: true },
@@ -690,6 +690,57 @@
     return api('/k/v1/record', 'PUT', { app: THIS_APP, id: recordId, record: body });
   }
 
+  /* ===================== DERIVED PROFILE FIELDS (from holdings) =====================
+   * App 23 derives these on its own form; a REST write from App 106 does not trigger
+   * that, and analysts edit the table here, so App 106 recomputes the same values from
+   * holdings_table and pushes them back. They are read-only (locked) mirrors in this app.
+   *   etp_holdings_type (Text_52)      - distinct asset classes present (+ "Equities"
+   *                                      when the sector is an equity sector), "; "-joined.
+   *                                      (matches App 23's Text_52 asset-summary automation)
+   *   holds_spot_crypto (Drop_down_34) - "Yes" when any Spot row carries a non-zero %.
+   *   portfolio_type    (Drop_down_36) - "Single Asset" for one distinct underlying
+   *                                      cryptoasset, "Basket" for two or more.
+   * Recomputed only when the table actually holds something, so an empty / parked table
+   * never clobbers the values pulled from App 23.
+   */
+  var DERIVED_ASSET_CLASSES = ['Funds', 'Futures', 'Options', 'Permitted Swaps', 'Spot', 'Equities'];
+  var DERIVED_ASSET_MAP = DERIVED_ASSET_CLASSES.reduce(function (m, n) { m[n.toLowerCase()] = n; return m; }, {});
+  var DERIVED_EQUITY_SECTORS = [
+    'DARB - Exchange Traded Note (ETN)',
+    'DARB - Exchange Traded Fund (ETF)',
+    'DARB - Closed-end Fund (CEF)',
+    'DA & DARB - Exchange Traded Fund (ETF)',
+    'DA & DARB - Exchange Traded Note (ETN)',
+    'DA & DARB - Closed-end Fund (CEF)'
+  ];
+
+  function applyDerived(rec) {
+    if (!rec || !rec[F.table]) return;
+    var rows = rec[F.table].value || [];
+    var classes = {}, underlyings = {}, hasSpot = false, hasHoldings = false;
+    rows.forEach(function (row) {
+      var v = row.value;
+      var pct = num(v[F.t_pct] && v[F.t_pct].value);
+      if (pct === null || pct === 0) return;          // only rows with a real weight count
+      hasHoldings = true;
+      var cls = DERIVED_ASSET_MAP[String((v[F.t_assetType] && v[F.t_assetType].value) || '').trim().toLowerCase()];
+      if (cls) { classes[cls] = true; if (cls === 'Spot') hasSpot = true; }
+      var u = String((v[F.t_underlying] && v[F.t_underlying].value) || '').trim();
+      if (u) underlyings[u] = true;
+    });
+    if (!hasHoldings) return;                         // nothing to derive from - keep App 23 values
+
+    var sector = (rec[F.sector] && rec[F.sector].value) || '';
+    if (DERIVED_EQUITY_SECTORS.indexOf(sector) > -1) classes['Equities'] = true;
+
+    derivedSet(rec, 'etp_holdings_type', Object.keys(classes).sort().join('; '));
+    derivedSet(rec, 'holds_spot_crypto', hasSpot ? 'Yes' : 'No');
+    var nUnderlying = Object.keys(underlyings).length;
+    if (nUnderlying >= 1) derivedSet(rec, 'portfolio_type', nUnderlying === 1 ? 'Single Asset' : 'Basket');
+  }
+
+  function derivedSet(rec, code, value) { if (rec[code]) rec[code].value = value; }
+
   /* ============================= SAVE / PUSH ============================= */
 
   // On edit submit: stamp metadata + as_of_date, sort rows desc, then push to App 23.
@@ -716,6 +767,10 @@
     // D3: stamp App 23's "Holdings last updated by / Holding review date" mirrors.
     if (rec.holdings_last_updated_by_a23) rec.holdings_last_updated_by_a23.value = me().name;
     if (rec.holding_review_dt) rec.holding_review_dt.value = serverNow;
+
+    // Derive Holds Spot Crypto / Portfolio Type / ETP Holdings Type from the table
+    // (pushed back to App 23 by the push:true profile fields below).
+    applyDerived(rec);
 
     // Schedule the next review from now + this record's cadence.
     var cad = (rec[F.cadence] && rec[F.cadence].value) || DEFAULT_CADENCE;
@@ -879,6 +934,18 @@
     }
   );
 
+  // Recompute the table-derived profile fields live as the analyst edits the holdings
+  // (rows added/removed, or an Asset Type / % / Underlying cell changed).
+  kintone.events.on([
+    'app.record.create.change.' + F.table,        'app.record.edit.change.' + F.table,
+    'app.record.create.change.' + F.t_assetType,  'app.record.edit.change.' + F.t_assetType,
+    'app.record.create.change.' + F.t_pct,        'app.record.edit.change.' + F.t_pct,
+    'app.record.create.change.' + F.t_underlying, 'app.record.edit.change.' + F.t_underlying
+  ], function (event) {
+    applyDerived(event.record);
+    return event;
+  });
+
   kintone.events.on('app.record.edit.show', function (event) {
     if (!document.querySelector('.ehu-bar')) {
       var sp = kintone.app.record.getHeaderMenuSpaceElement();
@@ -894,6 +961,8 @@
     }
     // make system fields read-only in the form
     lockSystemFields(event);
+    // reflect the table-derived fields on open (heals any drift from the master)
+    applyDerived(event.record);
     return event;
   });
 
@@ -931,7 +1000,8 @@
     var rec = event.record;
     [F.a23id, F.status, F.assignedTo, F.assignedAt, F.inEdit, F.lastBy, F.lastAt, F.order, F.reviewDue,
       F.issuer, F.etpName, F.identifier, F.sector, F.profileStatus,
-      'holdings_last_updated_by_a23', 'etp_bcbs_group', 'holding_review_dt']
+      'holdings_last_updated_by_a23', 'etp_bcbs_group', 'holding_review_dt',
+      'holds_spot_crypto', 'portfolio_type', 'etp_holdings_type']
       .forEach(function (code) {
         if (rec[code]) rec[code].disabled = true;
       });
@@ -1150,6 +1220,7 @@
 
       rows.sort(function (a, b) { return (num(b.value[F.t_pct].value) || -1) - (num(a.value[F.t_pct].value) || -1); });
       rec[F.table].value = rows;
+      applyDerived(rec);                 // refresh Holds Spot / Portfolio Type / Holdings Type
       kintone.app.record.set({ record: rec });
 
       var msg = parsed.length + ' row(s) added' + (replace ? ' (replaced existing).' : '.');
