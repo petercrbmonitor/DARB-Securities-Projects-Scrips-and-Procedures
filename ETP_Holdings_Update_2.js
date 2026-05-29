@@ -309,6 +309,47 @@
     });
   }
 
+  // App 106 field definitions (cached). Used to mirror master values SAFELY: a value for
+  // a field that does not exist in App 106 is dropped, and a value that is not a valid
+  // option for a dropdown is blanked - so a pull never fails with "Missing or invalid
+  // input." on a field/option mismatch between the master app and App 106.
+  var _a106Fields = null;
+  function a106Fields() {
+    if (_a106Fields) return Promise.resolve(_a106Fields);
+    return api('/k/v1/app/form/fields', 'GET', { app: THIS_APP }).then(function (resp) {
+      _a106Fields = resp.properties || {};
+      return _a106Fields;
+    }).catch(function () { return (_a106Fields = _a106Fields || {}); });
+  }
+  function optionOK(def, value) {
+    if (def && def.type === 'DROP_DOWN') {
+      if (value === '' || value == null) return '';
+      return (def.options && def.options[value]) ? value : '';
+    }
+    return value;
+  }
+  function coerceToA106(body) {
+    var props = _a106Fields;
+    if (!props || !Object.keys(props).length) return body;   // not loaded -> no-op
+    Object.keys(body).forEach(function (code) {
+      var def = props[code];
+      if (!def) { delete body[code]; return; }               // field absent in App 106
+      if (def.type === 'SUBTABLE') {
+        var fields = def.fields || {};
+        (body[code].value || []).forEach(function (row) {
+          var cells = row.value || {};
+          Object.keys(cells).forEach(function (cc) {
+            if (!fields[cc]) { delete cells[cc]; return; }    // cell absent in subtable
+            cells[cc].value = optionOK(fields[cc], cells[cc].value);
+          });
+        });
+      } else {
+        body[code].value = optionOK(def, body[code].value);
+      }
+    });
+    return body;
+  }
+
   function sectorQuery(validSectors) {
     var q = F_in(A23.sector, validSectors);
     if (APP23_ACTIVE_ONLY) q += ' and ' + F_in(A23.profileStatus, ['Active']);
@@ -318,7 +359,8 @@
 
   function pullQueue(providerFilter) {
     busy(true, 'Pulling qualifying profiles from App ' + APP_MASTER + '...');
-    return masterSectorOptions().then(function (opts) {
+    return Promise.all([masterSectorOptions(), a106Fields()]).then(function (res) {
+      var opts = res[0];
       var allow = ALLOWLIST_SECTORS.filter(function (s) { return opts.indexOf(s) > -1; });
       if (!allow.length) { busy(false); alert('No allowlisted sectors exist on App ' + APP_MASTER + '.'); return 0; }
       return doPull(providerFilter, allow);
@@ -410,7 +452,7 @@
         if (mid && statusByMaster.hasOwnProperty(mid)) {
           body[F.profileStatus] = { value: statusByMaster[mid] };
         }
-        return { id: r.$id.value, record: body };
+        return { id: r.$id.value, record: coerceToA106(body) };
       });
       return chunkUpdate(THIS_APP, updates);
     });
@@ -427,7 +469,7 @@
         return '"' + String(m).replace(/"/g, '') + '"';
       });
       i += 100;
-      return fetchAll(APP_MASTER, '$id in (' + slice.join(',') + ')', ['$id', A23.profileStatus])
+      return fetchAll(APP_MASTER, '$id in (' + slice.join(',') + ')', [A23.profileStatus])
         .then(function (recs) {
           recs.forEach(function (m) { map[m.$id.value] = valOf(m, A23.profileStatus); });
           return next();
@@ -452,7 +494,7 @@
     PROFILE_FIELDS.forEach(function (m) { r[m.a106] = { value: valOf(rec, m.a23) }; });
     r[F.secTable] = { value: mapSecuritiesIn(rec) };
     r[F.table] = { value: mapHoldingsIn(rec) };
-    return r;
+    return coerceToA106(r);   // drop unknown fields / blank invalid dropdown options
   }
 
   function buildNewRecord(rec, seq) {
@@ -868,7 +910,11 @@
 
   function msgOf(e) {
     if (!e) return 'Unknown error';
-    if (e.message) return e.message;
+    var parts = [];
+    if (e.message) parts.push(e.message);
+    if (e.code) parts.push('[' + e.code + ']');
+    if (e.errors) { try { parts.push(JSON.stringify(e.errors)); } catch (x) { /* ignore */ } }
+    if (parts.length) return parts.join(' ');
     try { return JSON.stringify(e); } catch (x) { return String(e); }
   }
 
@@ -876,6 +922,7 @@
 
   // Overview (index) page
   kintone.events.on('app.record.index.show', function (event) {
+    a106Fields();                  // warm App 106 field map for safe mirror writes
     if (document.querySelector('.ehu-bar')) return event;
     var sp = kintone.app.getHeaderMenuSpaceElement();
     if (!sp) return event;
@@ -913,28 +960,41 @@
   kintone.events.on('app.record.edit.submit', onEditSubmit);
   kintone.events.on('app.record.edit.submit.success', onEditSubmitSuccess);
 
-  // Auto-fill BCBS Group from the reference app (App 85) when the analyst sets an
-  // Underlying Cryptoasset. Non-blocking: if the name is not found, BCBS is left
-  // as-is (so App 23/App 85 name mismatches never block the edit). This restores
-  // the old lookup's "pick the asset, fill BCBS" convenience without its validation.
+  // Reference-app (App 34/85) BCBS lookup cache: exact Underlying Cryptoasset Name ->
+  // { bcbs, found }. Loaded once so the change handler can fill BCBS SYNCHRONOUSLY.
+  // Kintone forbids a change handler from returning a Promise ("...not allowed to return
+  // 'Thenable' object"); the old async version threw on manual edits AND on Paste's set().
+  var _refByKey = null;
+  function loadRefByKey() {
+    if (_refByKey) return Promise.resolve(_refByKey);
+    return fetchAll(APP_REF, '', [A34.key, A34.bcbs, A34.foundInEtps]).then(function (records) {
+      var m = {};
+      records.forEach(function (r) {
+        var key = (r[A34.key] || {}).value;
+        if (!key) return;
+        m[key] = {
+          bcbs: (r[A34.bcbs] || {}).value || '',
+          found: ((r[A34.foundInEtps] || {}).value || '') === 'Yes'
+        };
+      });
+      _refByKey = m;
+      return m;
+    }).catch(function () { return (_refByKey = _refByKey || {}); });
+  }
+
+  // Auto-fill BCBS Group from the reference app when the analyst sets an Underlying
+  // Cryptoasset. SYNCHRONOUS (never returns a Promise): resolves against the cached map;
+  // if the cache is not ready or the name is unknown, BCBS is left as-is so an
+  // App 23/App 34 name mismatch never blocks the edit.
   kintone.events.on(
     ['app.record.edit.change.' + F.t_underlying, 'app.record.create.change.' + F.t_underlying],
     function (event) {
       var row = event.changes && event.changes.row;
-      if (!row || !row.value[F.t_underlying]) return event;
+      if (!row || !row.value[F.t_underlying] || !row.value[F.t_bcbs]) return event;
       var name = (row.value[F.t_underlying].value || '').trim();
-      if (!name) return event;
-      var q = A34.key + ' = "' + name.replace(/"/g, '\\"') + '" and '
-            + A34.foundInEtps + ' in ("Yes") limit 1';
-      return api('/k/v1/records', 'GET', { app: APP_REF, query: q })
-        .then(function (r) {
-          if (r.records.length && row.value[F.t_bcbs]) {
-            var g = r.records[0][A34.bcbs] && r.records[0][A34.bcbs].value;
-            if (g) row.value[F.t_bcbs].value = g;
-          }
-          return event;
-        })
-        .catch(function () { return event; });
+      var hit = (name && _refByKey) ? _refByKey[name] : null;
+      if (hit && hit.found && hit.bcbs) row.value[F.t_bcbs].value = hit.bcbs;
+      return event;
     }
   );
 
@@ -951,6 +1011,7 @@
   });
 
   kintone.events.on('app.record.edit.show', function (event) {
+    loadRefByKey();                // warm the BCBS lookup cache for synchronous auto-fill
     if (!document.querySelector('.ehu-bar')) {
       var sp = kintone.app.record.getHeaderMenuSpaceElement();
       if (sp) {
@@ -973,6 +1034,7 @@
   // Detail (view-only) page - navigation buttons
   kintone.events.on('app.record.detail.show', function (event) {
     hideRowId();
+    a106Fields();                  // warm App 106 field map for "Refresh from master"
     if (document.querySelector('.ehu-bar')) return event;
     var sp = kintone.app.record.getHeaderMenuSpaceElement();
     if (!sp) return event;
