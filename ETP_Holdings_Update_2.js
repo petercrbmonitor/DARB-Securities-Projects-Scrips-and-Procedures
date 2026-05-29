@@ -128,6 +128,7 @@
   // This app's field codes.
   var F = {
     a23id: 'app23_record_id',
+    a23link: 'app23_link',
     issuer: 'issuer',
     etpName: 'etp_name',
     identifier: 'identifier',
@@ -586,6 +587,13 @@
     return 'Queue updated - added ' + added + ', removed ' + removed + '.';
   }
 
+  // Clickable URL to the master record (App 86 test / App 23 live). location.origin keeps
+  // it on whatever Kintone subdomain we run on. Stored in the LINK field app23_link; if that
+  // field does not exist in App 106 yet, coerceToA106 drops it (no error) until you add it.
+  function masterUrl(id) {
+    return id ? (location.origin + '/k/' + APP_MASTER + '/show#record=' + encodeURIComponent(id)) : '';
+  }
+
   // Common master -> this-app field mapping (shared by initial pull and re-pull).
   function mapMasterFields(rec) {
     var r = {};
@@ -594,6 +602,7 @@
     r[F.identifier] = { value: identifierOf(rec) };
     r[F.sector] = { value: valOf(rec, A23.sector) };
     r[F.profileStatus] = { value: valOf(rec, A23.profileStatus) }; // read-only master mirror
+    r[F.a23link] = { value: masterUrl(rec.$id && rec.$id.value) };  // click-through to master
     PROFILE_FIELDS.forEach(function (m) { r[m.a106] = { value: valOf(rec, m.a23) }; });
     r[F.secTable] = { value: mapSecuritiesIn(rec) };
     r[F.table] = { value: mapHoldingsIn(rec) };
@@ -1209,7 +1218,7 @@
   function lockSystemFields(event) {
     var rec = event.record;
     [F.a23id, F.status, F.assignedTo, F.assignedAt, F.inEdit, F.lastBy, F.lastAt, F.order, F.reviewDue,
-      F.issuer, F.etpName, F.identifier, F.sector, F.profileStatus,
+      F.issuer, F.etpName, F.identifier, F.sector, F.profileStatus, F.a23link,
       'holdings_last_updated_by_a23', 'etp_bcbs_group', 'holding_review_dt',
       'holds_spot_crypto', 'portfolio_type', 'etp_holdings_type']
       .forEach(function (code) {
