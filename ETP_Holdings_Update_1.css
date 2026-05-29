@@ -208,16 +208,50 @@
    Delete this whole block to leave the native form untouched.
    ===================================================================== */
 
-/* lighten the heavy outer wrapper, keep fields legible */
+/* lighten the heavy outer wrapper */
 .gaia-argoui-app-show .control-gaia,
 .gaia-argoui-app-edit .control-gaia{border:0!important;box-shadow:none!important}
+
+/* readability: larger, clearer type across the record form */
+.gaia-argoui-app-show .control-label-gaia,
+.gaia-argoui-app-edit .control-label-gaia,
+.gaia-argoui-app-show .control-label-text-gaia,
+.gaia-argoui-app-edit .control-label-text-gaia{
+  font-size:13px!important;font-weight:700!important;letter-spacing:.02em;
+  color:var(--etp-muted)!important;
+}
 .gaia-argoui-app-show .control-value-gaia,
-.gaia-argoui-app-edit .control-value-gaia{
-  border:1px solid var(--etp-line-2)!important;border-radius:8px!important;
+.gaia-argoui-app-edit .control-value-gaia,
+.gaia-argoui-app-edit .control-value-gaia input,
+.gaia-argoui-app-edit .control-value-gaia textarea,
+.gaia-argoui-app-edit .control-value-gaia select{
+  font-size:15px!important;color:var(--etp-ink)!important;
 }
 
-/* subtables: sticky tinted header, zebra rows, hover highlight, fit-to-content */
+/* "bubble" fields: soft shadow + rounded, with a springy lift on hover/focus */
+.gaia-argoui-app-show .control-value-gaia,
+.gaia-argoui-app-edit .control-value-gaia{
+  border:1px solid var(--etp-line)!important;border-radius:12px!important;
+  background:var(--etp-surface)!important;box-shadow:var(--etp-shadow-1)!important;
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1),
+             box-shadow .25s ease, border-color .2s ease!important;
+}
+.gaia-argoui-app-show .control-value-gaia:hover,
+.gaia-argoui-app-edit .control-value-gaia:hover,
+.gaia-argoui-app-edit .control-value-gaia:focus-within{
+  transform:translateY(-3px)!important;
+  box-shadow:var(--etp-shadow-2)!important;
+  border-color:var(--etp-teal)!important;
+}
+/* inner inputs blend into the bubble (no double border) */
+.gaia-argoui-app-edit .control-value-gaia input,
+.gaia-argoui-app-edit .control-value-gaia textarea{
+  border:0!important;box-shadow:none!important;background:transparent!important;
+}
+
+/* subtables: bigger text, sticky tinted header, zebra + hover rows, fit-to-content */
 .subtable-gaia{width:auto!important;max-width:100%!important}
+.subtable-gaia th,.subtable-gaia td{font-size:13.5px!important}
 .subtable-gaia thead th{
   position:sticky!important;top:0!important;z-index:2!important;
   background:var(--etp-mint-2)!important;color:var(--etp-teal-800)!important;
