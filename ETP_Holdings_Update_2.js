@@ -9,7 +9,7 @@
  *   - Save  -> push Holdings back into App 23, release lock
  *   - Cancel -> discard, release lock
  *
- * Does NOT modify App 23 or App 54. The master app (App 86 in test, App 23 live)
+ * Does NOT modify App 23. The master app (App 86 in test, App 23 live)
  * is only read on pull and written back on Save. The cryptoasset reference
  * (App 85 in test, App 34 live) is read-only - used for BCBS auto-fill and for
  * Paste allocation ticker matching.
@@ -325,9 +325,18 @@
   }
 
   function go(recordId, mode) {
-    var url = '/k/' + THIS_APP + '/show#record=' + recordId;
-    if (mode === 'edit') url += '&mode=edit';
-    window.location.href = url;
+    var hash = '#record=' + recordId + (mode === 'edit' ? '&mode=edit' : '');
+    // If we are already on a record page (/show), changing only the hash does NOT make
+    // Kintone re-fetch - it switches mode using the cached record, so the edit form keeps
+    // a stale $revision and the next save fails with GAIA_UN03 ("...updated while editing").
+    // Force a full reload in that case so the form loads the current revision.
+    var onShow = window.location.pathname.indexOf('/k/' + THIS_APP + '/show') === 0;
+    if (onShow) {
+      window.location.hash = hash;
+      window.location.reload();
+    } else {
+      window.location.href = '/k/' + THIS_APP + '/show' + hash;
+    }
   }
 
   function gotoIndex(query) {
