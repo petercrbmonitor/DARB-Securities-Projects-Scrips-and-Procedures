@@ -960,6 +960,22 @@
 
   var PASTE_TYPE_OPTIONS = ['Spot', 'Futures', 'Options', 'Funds', 'Permitted Swaps'];
 
+  // kintone.app.record.set() validates the in-form record model and rejects any subtable
+  // cell that lacks a valid `type` ("...type is invalid"). REST writes (pull/push) do not
+  // need it, but Paste builds brand-new rows and feeds them through set(), so each cell
+  // must carry its field type. These match the deployed holdings_table schema.
+  var HOLDINGS_CELL_TYPES = (function () {
+    var m = {};
+    m[F.t_rowId] = 'SINGLE_LINE_TEXT';
+    m[F.t_assetType] = 'DROP_DOWN';
+    m[F.t_underlying] = 'SINGLE_LINE_TEXT';
+    m[F.t_bcbs] = 'DROP_DOWN';
+    m[F.t_pct] = 'NUMBER';
+    m[F.t_asOf] = 'DATETIME';
+    return m;
+  })();
+  function hcell(code, value) { return { type: HOLDINGS_CELL_TYPES[code], value: value }; }
+
   function pnorm(s) { return String(s || '').replace(/[^A-Za-z0-9]/g, '').toLowerCase(); }
 
   // Parser - auto-detects delimited COLUMN paste (header with Symbol/Weight) vs a
@@ -1123,12 +1139,12 @@
         if (!bcbs) nobcbs++;
         var numPct = num(p.pct);
         var c = {};
-        c[F.t_rowId] = { value: '' };
-        c[F.t_assetType] = { value: breakdownType || '' };
-        c[F.t_underlying] = { value: underlying };
-        c[F.t_bcbs] = { value: bcbs };
-        c[F.t_pct] = { value: numPct === null ? '' : String(numPct) };
-        c[F.t_asOf] = { value: numPct === null ? '' : dateVal };
+        c[F.t_rowId] = hcell(F.t_rowId, '');
+        c[F.t_assetType] = hcell(F.t_assetType, breakdownType || '');
+        c[F.t_underlying] = hcell(F.t_underlying, underlying);
+        c[F.t_bcbs] = hcell(F.t_bcbs, bcbs);
+        c[F.t_pct] = hcell(F.t_pct, numPct === null ? '' : String(numPct));
+        c[F.t_asOf] = hcell(F.t_asOf, (numPct !== null && dateVal) ? dateVal : null);
         rows.push({ value: c });
       });
 
