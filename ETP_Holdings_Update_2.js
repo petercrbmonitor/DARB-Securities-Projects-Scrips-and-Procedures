@@ -753,7 +753,11 @@
     // Mutate .value only; replacing the cell object drops its type and Kintone
     // rejects the save ("as_of_date.type is invalid").
     var rows = (rec[F.table].value || []).map(function (row) {
-      var hasPct = num(row.value[F.t_pct].value) !== null;
+      // Normalise the breakdown to a bare number string so a stray "%" (e.g. typed by
+      // hand) is stripped and never trips the NUMBER field's "can only be numbers" check.
+      var n = num(row.value[F.t_pct] && row.value[F.t_pct].value);
+      if (row.value[F.t_pct]) row.value[F.t_pct].value = (n === null ? '' : String(n));
+      var hasPct = n !== null;
       if (row.value[F.t_asOf]) row.value[F.t_asOf].value = hasPct ? serverNow : '';
       return row;
     });
@@ -1213,6 +1217,8 @@
         c[F.t_assetType] = hcell(F.t_assetType, breakdownType || '');
         c[F.t_underlying] = hcell(F.t_underlying, underlying);
         c[F.t_bcbs] = hcell(F.t_bcbs, bcbs);
+        // breakdown_pct is a NUMBER field - store the bare number only (num() already
+        // stripped any "%"/commas) so the value never trips "can only be numbers".
         c[F.t_pct] = hcell(F.t_pct, numPct === null ? '' : String(numPct));
         c[F.t_asOf] = hcell(F.t_asOf, (numPct !== null && dateVal) ? dateVal : null);
         rows.push({ value: c });
