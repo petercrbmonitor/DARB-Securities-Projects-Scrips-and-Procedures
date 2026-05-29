@@ -59,6 +59,28 @@
   // Only pull profiles with this Profile Status (Drop_down_22).
   var APP23_ACTIVE_ONLY = true;
 
+  // ---- ROUND-ROBIN ASSIGNMENT ----
+  // New queued records are auto-assigned across an analyst pool, load-balanced by each
+  // analyst's current open workload. Members come from the Kintone group ASSIGN_GROUP
+  // (user "code" = email in this domain); FALLBACK_ANALYSTS is used only if that group
+  // API call fails. Set ASSIGN_ENABLED = false to leave new records unassigned.
+  var ASSIGN_ENABLED = true;
+  var ASSIGN_GROUP = 'Research Admins';
+  var FALLBACK_ANALYSTS = [
+    { code: 'james.francis@crbmonitor.com', name: 'Jim' },
+    { code: 'kyle.buckley@crbmonitor.com',  name: 'Kyle' },
+    { code: 'peter@crbmonitor.com',         name: 'Peter' },
+    { code: 'tamara.guy@crbmonitor.com',    name: 'Tamara' }
+  ];
+
+  // ---- AUTO-SYNC ON OPEN ----
+  // App 23 cannot be modified and this JS only runs while App 106 is open, so instead of a
+  // background push, App 106 quietly runs a full Refresh Queue when the overview opens
+  // (adds newly-Active profiles, drops non-Active ones). Throttled to at most once per
+  // AUTO_SYNC_MIN_MS across tabs (localStorage timestamp).
+  var AUTO_SYNC_ON_OPEN = true;
+  var AUTO_SYNC_MIN_MS = 10 * 60 * 1000;
+
   // ---- REVIEW CADENCE ----
   // Records are revisited on a cadence. "Queue Due Reviews" re-queues any Updated
   // record whose Next Review Due date has passed, re-pulling fresh data from the
@@ -241,7 +263,7 @@
       var t = ((v[F.t_assetType] && v[F.t_assetType].value) || '').trim().toLowerCase();
       var u = ((v[F.t_underlying] && v[F.t_underlying].value) || '').trim().toLowerCase();
       if (!t && !u) return true;
-      var key = t + '   ' + u;
+      var key = t + '|' + u;
       if (seen[key]) return false;
       seen[key] = true;
       return true;
@@ -367,6 +389,43 @@
     return body;
   }
 
+  // ---- round-robin / load-balanced assignment ----
+  var _pool = null;
+  function assignPool() {
+    if (_pool) return Promise.resolve(_pool);
+    if (!ASSIGN_ENABLED) return Promise.resolve((_pool = []));
+    return api('/k/v1/group/users', 'GET', { code: ASSIGN_GROUP }).then(function (resp) {
+      var users = (resp.users || []).map(function (u) { return { code: u.code, name: u.name }; });
+      _pool = users.length ? users : FALLBACK_ANALYSTS.slice();
+      return _pool;
+    }).catch(function () { _pool = FALLBACK_ANALYSTS.slice(); return _pool; });
+  }
+  // Current open workload (In Queue + Assigned) per assignee code, for load-balancing.
+  function currentLoad() {
+    return fetchAll(THIS_APP, F.status + ' in ("' + ST.QUEUE + '","' + ST.ASSIGNED + '")', [F.assignedTo])
+      .then(function (recs) {
+        var load = {};
+        recs.forEach(function (r) {
+          ((r[F.assignedTo] && r[F.assignedTo].value) || []).forEach(function (u) {
+            if (u && u.code) load[u.code] = (load[u.code] || 0) + 1;
+          });
+        });
+        return load;
+      });
+  }
+  // Assign each new record body to the least-loaded pool member (round-robin when even).
+  function balanceAssign(records, pool, load) {
+    if (!pool || !pool.length) return;
+    var counts = {};
+    pool.forEach(function (p) { counts[p.code] = (load && load[p.code]) || 0; });
+    records.forEach(function (rec) {
+      var pick = pool[0];
+      for (var i = 1; i < pool.length; i++) if (counts[pool[i].code] < counts[pick.code]) pick = pool[i];
+      rec[F.assignedTo] = { value: [{ code: pick.code }] };
+      counts[pick.code] += 1;
+    });
+  }
+
   function sectorQuery(validSectors) {
     var q = F_in(A23.sector, validSectors);
     if (APP23_ACTIVE_ONLY) q += ' and ' + F_in(A23.profileStatus, ['Active']);
@@ -374,14 +433,28 @@
   }
   function F_in(code, vals) { return code + ' in (' + quoteList(vals) + ')'; }
 
-  function pullQueue(providerFilter) {
+  // silent = true suppresses the failure alert (used by the throttled auto-sync on open).
+  function pullQueue(providerFilter, silent) {
     busy(true, 'Pulling qualifying profiles from App ' + APP_MASTER + '...');
     return Promise.all([masterSectorOptions(), a106Fields()]).then(function (res) {
       var opts = res[0];
       var allow = ALLOWLIST_SECTORS.filter(function (s) { return opts.indexOf(s) > -1; });
-      if (!allow.length) { busy(false); alert('No allowlisted sectors exist on App ' + APP_MASTER + '.'); return 0; }
+      if (!allow.length) { busy(false); if (!silent) alert('No allowlisted sectors exist on App ' + APP_MASTER + '.'); return 0; }
       return doPull(providerFilter, allow);
-    }).catch(function (e) { busy(false); alert('Pull failed: ' + msgOf(e)); });
+    }).catch(function (e) { busy(false); if (silent) { try { console.error('[ETP auto-sync]', e); } catch (x) {} } else { alert('Pull failed: ' + msgOf(e)); } });
+  }
+
+  // Throttled auto-sync: a full Refresh Queue when the overview opens, at most once per
+  // AUTO_SYNC_MIN_MS across tabs - so newly-Active App 23 profiles appear (and non-Active
+  // ones leave) without anyone clicking Refresh Queue.
+  function maybeAutoSync() {
+    if (!AUTO_SYNC_ON_OPEN) return;
+    var KEY = 'ehu-last-sync';
+    var last = 0;
+    try { last = parseInt(localStorage.getItem(KEY) || '0', 10) || 0; } catch (e) {}
+    if (Date.now() - last < AUTO_SYNC_MIN_MS) return;
+    try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {}
+    pullQueue('', true);
   }
 
   function doPull(providerFilter, allow) {
@@ -442,10 +515,14 @@
               toast(pullSummary(0, toDrop.length, providerFilter));
               return 0;
             }
-            return chunkAdd(THIS_APP, toAdd).then(function () {
-              busy(false);
-              toast(pullSummary(toAdd.length, toDrop.length, providerFilter));
-              return toAdd.length;
+            // Round-robin / load-balance the new records across the analyst pool, then add.
+            return Promise.all([assignPool(), currentLoad()]).then(function (pl) {
+              balanceAssign(toAdd, pl[0], pl[1]);
+              return chunkAdd(THIS_APP, toAdd).then(function () {
+                busy(false);
+                toast(pullSummary(toAdd.length, toDrop.length, providerFilter));
+                return toAdd.length;
+              });
             });
           });
         });
@@ -692,8 +769,15 @@
     var q = F.status + ' in ("' + ST.QUEUE + '") and ' + F.inEdit + ' in ("No") order by ' + F.order + ' asc limit 500';
     return api('/k/v1/records', 'GET', { app: THIS_APP, query: q })
       .then(function (r) {
-        var pool = r.records;
-        if (!pool.length) { busy(false); alert('No records left in the Queue'); return; }
+        var all = r.records;
+        if (!all.length) { busy(false); alert('No records left in the Queue'); return; }
+        // Round-robin pre-assigns an owner on pull, so prefer my own queued records;
+        // fall back to the shared pool when my queue is empty (work-stealing).
+        var myCode = me().code;
+        var mine = all.filter(function (p) {
+          return ((p[F.assignedTo] && p[F.assignedTo].value) || []).some(function (x) { return x && x.code === myCode; });
+        });
+        var pool = mine.length ? mine : all;
         return chooseRecord(pool).then(function (chosen) {
           return assign(chosen).then(function () {
             busy(false);
@@ -849,7 +933,7 @@
       var t = ((v[F.t_assetType] && v[F.t_assetType].value) || '').trim().toLowerCase();
       var u = ((v[F.t_underlying] && v[F.t_underlying].value) || '').trim().toLowerCase();
       if (!t && !u) return true;                 // keep genuinely blank rows
-      var key = t + ' ' + u;
+      var key = t + '|' + u;
       if (seenRows[key]) return false;
       seenRows[key] = true;
       return true;
@@ -971,6 +1055,7 @@
   // Overview (index) page
   kintone.events.on('app.record.index.show', function (event) {
     a106Fields();                  // warm App 106 field map for safe mirror writes
+    maybeAutoSync();               // throttled full sync on open (Active in / non-Active out)
     if (document.querySelector('.ehu-bar')) return event;
     var sp = kintone.app.getHeaderMenuSpaceElement();
     if (!sp) return event;
@@ -1180,11 +1265,11 @@
       return tickRe.test(c) ? { ticker: c, name: '' } : null;
     };
 
-    // Pre-pass for bullet / colon lists: "[*-•1.] Name (TICKER)[:] weight[%]" per line
+    // Pre-pass for bullet / colon lists: "[*-\u20221.] Name (TICKER)[:] weight[%]" per line
     // (e.g. "* Bitcoin (BTC): 50.03%"). Used only when EVERY non-empty line matches, so
     // delimited and free-stream pastes fall through to the logic below.
-    var bulletRe = /^\s*(?:[*•·▪‣>⁃\-–—]+|\d+[.)])\s+/;
-    var lineRe = /^(.*?)\s*\(([A-Za-z0-9]{2,6})\)\s*[:\-–]?\s*(-?\d{1,3}(?:[.,]\d{1,4})?)\s*%?\s*$/;
+    var bulletRe = /^\s*(?:[*\u2022\u00b7\u25aa\u2023>\u2043\-\u2013\u2014]+|\d+[.)])\s+/;
+    var lineRe = /^(.*?)\s*\(([A-Za-z0-9]{2,6})\)\s*[:\-\u2013]?\s*(-?\d{1,3}(?:[.,]\d{1,4})?)\s*%?\s*$/;
     var lineHits = [];
     lines.forEach(function (l) {
       var m = lineRe.exec(l.replace(bulletRe, '').trim());
