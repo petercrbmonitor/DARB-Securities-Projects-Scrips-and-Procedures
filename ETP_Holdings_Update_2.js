@@ -231,6 +231,23 @@
     });
   }
 
+  // Collapse duplicate holdings rows by Asset Type + Underlying Cryptoasset, keeping the
+  // first occurrence (call after sorting desc by % to keep the largest). Genuinely blank
+  // rows (no type and no underlying) are left untouched.
+  function dedupeRows(rows) {
+    var seen = {};
+    return (rows || []).filter(function (row) {
+      var v = row.value || {};
+      var t = ((v[F.t_assetType] && v[F.t_assetType].value) || '').trim().toLowerCase();
+      var u = ((v[F.t_underlying] && v[F.t_underlying].value) || '').trim().toLowerCase();
+      if (!t && !u) return true;
+      var key = t + '   ' + u;
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+
   function quoteList(arr) {
     return arr.map(function (s) { return '"' + String(s).replace(/"/g, '\\"') + '"'; }).join(', ');
   }
@@ -732,6 +749,24 @@
     return api('/k/v1/record', 'PUT', { app: THIS_APP, id: recordId, record: body });
   }
 
+  // After a native Cancel, Kintone returns to the detail view without releasing our lock.
+  // If this record is still Assigned + locked to the current user (in_edit reverted to
+  // "Yes" because the edit was discarded), send it back to the queue (In Queue, in_edit
+  // No) while KEEPING its assigned owner so round-robin ownership survives a cancel.
+  function releaseIfCancelled(rec) {
+    if (!rec) return;
+    var locked = rec[F.inEdit] && rec[F.inEdit].value === 'Yes';
+    var st = rec[F.status] && rec[F.status].value;
+    var mine = ((rec[F.assignedTo] && rec[F.assignedTo].value) || [])
+      .some(function (u) { return u && u.code === me().code; });
+    if (!(locked && st === ST.ASSIGNED && mine)) return;
+    var body = {};
+    body[F.inEdit] = { value: 'No' };
+    body[F.status] = { value: ST.QUEUE };
+    api('/k/v1/record', 'PUT', { app: THIS_APP, id: kintone.app.record.getId(), record: body })
+      .catch(function () { /* non-fatal */ });
+  }
+
   /* ===================== DERIVED PROFILE FIELDS (from holdings) =====================
    * App 23 derives these on its own form; a REST write from App 106 does not trigger
    * that, and analysts edit the table here, so App 106 recomputes the same values from
@@ -805,6 +840,19 @@
     });
     rows.sort(function (a, b) {
       return (num(b.value[F.t_pct].value) || -1) - (num(a.value[F.t_pct].value) || -1);
+    });
+    // Deduplicate by Asset Type + Underlying (keep the highest % = first after the sort),
+    // so a double-paste or repeated row collapses to one entry before push.
+    var seenRows = {};
+    rows = rows.filter(function (row) {
+      var v = row.value;
+      var t = ((v[F.t_assetType] && v[F.t_assetType].value) || '').trim().toLowerCase();
+      var u = ((v[F.t_underlying] && v[F.t_underlying].value) || '').trim().toLowerCase();
+      if (!t && !u) return true;                 // keep genuinely blank rows
+      var key = t + ' ' + u;
+      if (seenRows[key]) return false;
+      seenRows[key] = true;
+      return true;
     });
     rec[F.table].value = rows;
 
@@ -1012,17 +1060,18 @@
 
   kintone.events.on('app.record.edit.show', function (event) {
     loadRefByKey();                // warm the BCBS lookup cache for synchronous auto-fill
-    if (!document.querySelector('.ehu-bar')) {
-      var sp = kintone.app.record.getHeaderMenuSpaceElement();
-      if (sp) {
-        var b = bar();
-        b.appendChild(mkBtn('Paste allocation', function () { openPasteModal(); }, true));
-        b.appendChild(mkBtn('Cancel', function () {
-          var id = kintone.app.record.getId();
-          releaseLock(id, ST.QUEUE).then(function () { go(id, 'view'); });
-        }));
-        sp.appendChild(b);
-      }
+    // "Paste allocation" renders in the in-form space field under the holdings table
+    // (element id "pasteAllocSpace"). No Cancel button here - Kintone's own Cancel handles
+    // discard, and detail.show releases the lock if the edit was cancelled.
+    var ps = null;
+    try { ps = kintone.app.record.getSpaceElement('pasteAllocSpace'); } catch (e) { ps = null; }
+    if (!ps) ps = kintone.app.record.getHeaderMenuSpaceElement();   // fallback if space missing
+    if (ps && !ps.querySelector('.ehu-paste-btn')) {
+      var b = bar();
+      var pb = mkBtn('Paste allocation', function () { openPasteModal(); }, true);
+      pb.className += ' ehu-paste-btn';
+      b.appendChild(pb);
+      ps.appendChild(b);
     }
     // make system fields read-only in the form
     lockSystemFields(event);
@@ -1035,6 +1084,7 @@
   kintone.events.on('app.record.detail.show', function (event) {
     hideRowId();
     a106Fields();                  // warm App 106 field map for "Refresh from master"
+    releaseIfCancelled(event.record);  // native Cancel lands here - free our lock if so
     if (document.querySelector('.ehu-bar')) return event;
     var sp = kintone.app.record.getHeaderMenuSpaceElement();
     if (!sp) return event;
@@ -1300,6 +1350,7 @@
       });
 
       rows.sort(function (a, b) { return (num(b.value[F.t_pct].value) || -1) - (num(a.value[F.t_pct].value) || -1); });
+      rows = dedupeRows(rows);            // collapse repeats by Asset Type + Underlying
       rec[F.table].value = rows;
       applyDerived(rec);                 // refresh Holds Spot / Portfolio Type / Holdings Type
       kintone.app.record.set({ record: rec });
