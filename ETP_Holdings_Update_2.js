@@ -110,6 +110,7 @@
     etpName: 'etp_name',
     identifier: 'identifier',
     sector: 'sector',
+    profileStatus: 'profile_status',
     status: 'status',
     assignedTo: 'assigned_to',
     assignedAt: 'assigned_at',
@@ -325,7 +326,7 @@
   }
 
   function doPull(providerFilter, allow) {
-    // Existing this-app records keyed by app23 id.
+    // Existing this-app records keyed by app23 id (status + lock drive the dequeue sweep).
     return fetchAll(THIS_APP, 'order by $id asc', [F.a23id, F.status, F.inEdit, F.order])
       .then(function (existing) {
         var byKey = {};
@@ -342,24 +343,102 @@
         return fetchAll(APP23, q).then(function (src) {
           var toAdd = [];
           var seq = maxOrder;
+          var qualifying = {};                 // master ids still qualifying (this pull)
           src.forEach(function (rec) {
             var key = rec.$id.value;
-            var cur = byKey[key];
-            if (cur) {
-              // Skip in-progress work; do not re-queue Updated unless re-added manually.
+            qualifying[key] = true;
+            if (byKey[key]) {
+              // Already tracked: skip in-progress work; do not re-queue Updated unless re-added manually.
               return;
             }
             seq += 1;
             toAdd.push(buildNewRecord(rec, seq));
           });
-          if (!toAdd.length) { busy(false); toast('Queue is up to date - nothing new to add.'); return 0; }
-          return chunkAdd(THIS_APP, toAdd).then(function () {
+
+          // Self-cleaning queue: a record whose master no longer qualifies (status left
+          // "Active" or sector left the allowlist) drops out of the queue. Only on a FULL
+          // refresh - a provider-filtered pull's qualifying set is partial and would wrongly
+          // dequeue every other provider. Never touch Assigned / in-edit records.
+          var toDrop = [];
+          if (!providerFilter) {
+            existing.forEach(function (r) {
+              var st = r[F.status] && r[F.status].value;
+              var locked = r[F.inEdit] && r[F.inEdit].value === 'Yes';
+              var mid = r[F.a23id] && r[F.a23id].value;
+              if (!locked && mid && !qualifying[mid] && (st === ST.QUEUE || st === ST.UPDATED)) {
+                toDrop.push(r);
+              }
+            });
+          }
+
+          if (!toAdd.length && !toDrop.length) {
             busy(false);
-            toast('Added ' + toAdd.length + ' profile(s) to the queue.');
-            return toAdd.length;
+            toast('Queue is up to date - nothing to add or remove.');
+            return 0;
+          }
+
+          return dequeueRecords(toDrop).then(function () {
+            if (!toAdd.length) {
+              busy(false);
+              toast(pullSummary(0, toDrop.length, providerFilter));
+              return 0;
+            }
+            return chunkAdd(THIS_APP, toAdd).then(function () {
+              busy(false);
+              toast(pullSummary(toAdd.length, toDrop.length, providerFilter));
+              return toAdd.length;
+            });
           });
         });
       });
+  }
+
+  // Move records out of the queue (status -> Not in Queue), refreshing profile_status
+  // from the master where it still exists so the mirror shows the current (non-Active)
+  // status. Used by the Refresh Queue self-cleaning sweep.
+  function dequeueRecords(records) {
+    if (!records || !records.length) return Promise.resolve();
+    var masterIds = records
+      .map(function (r) { return r[F.a23id] && r[F.a23id].value; })
+      .filter(Boolean);
+    return fetchMasterStatuses(masterIds).then(function (statusByMaster) {
+      var updates = records.map(function (r) {
+        var mid = r[F.a23id] && r[F.a23id].value;
+        var body = {};
+        body[F.status] = { value: ST.NOT };
+        // Master deleted -> not in the map; leave the last-known profile_status as-is.
+        if (mid && statusByMaster.hasOwnProperty(mid)) {
+          body[F.profileStatus] = { value: statusByMaster[mid] };
+        }
+        return { id: r.$id.value, record: body };
+      });
+      return chunkUpdate(THIS_APP, updates);
+    });
+  }
+
+  // master $id -> current Profile Status (Drop_down_22). Chunked so a long id list
+  // never blows the query length; masters that no longer exist just drop out of the map.
+  function fetchMasterStatuses(masterIds) {
+    var map = {};
+    var i = 0;
+    function next() {
+      if (i >= masterIds.length) return Promise.resolve(map);
+      var slice = masterIds.slice(i, i + 100).map(function (m) {
+        return '"' + String(m).replace(/"/g, '') + '"';
+      });
+      i += 100;
+      return fetchAll(APP_MASTER, '$id in (' + slice.join(',') + ')', ['$id', A23.profileStatus])
+        .then(function (recs) {
+          recs.forEach(function (m) { map[m.$id.value] = valOf(m, A23.profileStatus); });
+          return next();
+        });
+    }
+    return next();
+  }
+
+  function pullSummary(added, removed, providerFilter) {
+    if (providerFilter) return 'Added ' + added + ' profile(s) for "' + providerFilter + '".';
+    return 'Queue updated - added ' + added + ', removed ' + removed + '.';
   }
 
   // Common master -> this-app field mapping (shared by initial pull and re-pull).
@@ -369,6 +448,7 @@
     r[F.etpName] = { value: valOf(rec, A23.etpName) };
     r[F.identifier] = { value: identifierOf(rec) };
     r[F.sector] = { value: valOf(rec, A23.sector) };
+    r[F.profileStatus] = { value: valOf(rec, A23.profileStatus) }; // read-only master mirror
     PROFILE_FIELDS.forEach(function (m) { r[m.a106] = { value: valOf(rec, m.a23) }; });
     r[F.secTable] = { value: mapSecuritiesIn(rec) };
     r[F.table] = { value: mapHoldingsIn(rec) };
@@ -498,12 +578,20 @@
       busy(true, 'Re-pulling ' + ids.length + ' profile(s) from App ' + APP_MASTER + '...');
       return fetchAll(APP_MASTER, '$id in (' + ids.join(',') + ')').then(function (masters) {
         var updates = [];
+        var dropped = 0;
         masters.forEach(function (m) {
           var d = byMaster[m.$id.value];
           if (!d) return;
-          var body = mapMasterFields(m);
-          body[F.status] = { value: ST.QUEUE };
+          var body = mapMasterFields(m);     // also refreshes profile_status from the master
           body[F.inEdit] = { value: 'No' };
+          // Self-cleaning: a master that is no longer Active drops out of the queue
+          // (status -> Not in Queue) instead of being re-queued for review.
+          if (!APP23_ACTIVE_ONLY || valOf(m, A23.profileStatus) === 'Active') {
+            body[F.status] = { value: ST.QUEUE };
+          } else {
+            body[F.status] = { value: ST.NOT };
+            dropped += 1;
+          }
           updates.push({ id: d.$id.value, record: body });
           delete byMaster[m.$id.value];
         });
@@ -511,10 +599,12 @@
         var missing = Object.keys(byMaster).length;
         return chunkUpdate(THIS_APP, updates).then(function () {
           busy(false);
-          var msg = 'Re-queued ' + updates.length + ' due record(s) with fresh App ' + APP_MASTER + ' data.';
+          var requeued = updates.length - dropped;
+          var msg = 'Re-queued ' + requeued + ' due record(s) with fresh App ' + APP_MASTER + ' data.';
+          if (dropped) msg += '\n' + dropped + ' record(s) no longer Active - moved to "Not in Queue".';
           if (missing) msg += '\n' + missing + ' due record(s) had no matching master profile and were skipped.';
           toast(msg);
-          return updates.length;
+          return requeued;
         });
       });
     }).catch(function (e) { busy(false); alert('Queue due reviews failed: ' + msgOf(e)); });
@@ -840,7 +930,7 @@
   function lockSystemFields(event) {
     var rec = event.record;
     [F.a23id, F.status, F.assignedTo, F.assignedAt, F.inEdit, F.lastBy, F.lastAt, F.order, F.reviewDue,
-      F.issuer, F.etpName, F.identifier, F.sector,
+      F.issuer, F.etpName, F.identifier, F.sector, F.profileStatus,
       'holdings_last_updated_by_a23', 'etp_bcbs_group', 'holding_review_dt']
       .forEach(function (code) {
         if (rec[code]) rec[code].disabled = true;
