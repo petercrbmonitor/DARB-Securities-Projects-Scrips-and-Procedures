@@ -464,7 +464,9 @@
     try { last = parseInt(localStorage.getItem(KEY) || '0', 10) || 0; } catch (e) {}
     if (Date.now() - last < AUTO_SYNC_MIN_MS) return;
     try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {}
-    pullQueue('', true);
+    // Reload the list if the sync actually added records, so they appear without a manual
+    // refresh. The timestamp above is already set, so the reload won't re-trigger a sync.
+    pullQueue('', true).then(function (added) { if (added > 0) window.location.reload(); });
   }
 
   function doPull(providerFilter, allow) {
@@ -528,7 +530,14 @@
             // Round-robin / load-balance the new records across the analyst pool, then add.
             return Promise.all([assignPool(), currentLoad()]).then(function (pl) {
               balanceAssign(toAdd, pl[0], pl[1]);
-              return chunkAdd(THIS_APP, toAdd).then(function () {
+              return chunkAdd(THIS_APP, toAdd).catch(function (e) {
+                // An assignee code that is not valid in this environment would reject the
+                // whole add. Retry unassigned so the pull still succeeds (records land In
+                // Queue, just without an owner).
+                try { console.warn('[ETP] add with assignment failed, retrying unassigned:', msgOf(e)); } catch (x) {}
+                toAdd.forEach(function (rec) { delete rec[F.assignedTo]; });
+                return chunkAdd(THIS_APP, toAdd);
+              }).then(function () {
                 busy(false);
                 toast(pullSummary(toAdd.length, toDrop.length, providerFilter));
                 return toAdd.length;
