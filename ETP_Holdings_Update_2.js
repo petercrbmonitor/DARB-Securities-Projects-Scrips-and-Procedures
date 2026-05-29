@@ -1129,6 +1129,19 @@
       var c = clean(f);
       return tickRe.test(c) ? { ticker: c, name: '' } : null;
     };
+
+    // Pre-pass for bullet / colon lists: "[*-•1.] Name (TICKER)[:] weight[%]" per line
+    // (e.g. "* Bitcoin (BTC): 50.03%"). Used only when EVERY non-empty line matches, so
+    // delimited and free-stream pastes fall through to the logic below.
+    var bulletRe = /^\s*(?:[*•·▪‣>⁃\-–—]+|\d+[.)])\s+/;
+    var lineRe = /^(.*?)\s*\(([A-Za-z0-9]{2,6})\)\s*[:\-–]?\s*(-?\d{1,3}(?:[.,]\d{1,4})?)\s*%?\s*$/;
+    var lineHits = [];
+    lines.forEach(function (l) {
+      var m = lineRe.exec(l.replace(bulletRe, '').trim());
+      if (m) lineHits.push({ ticker: m[2].toUpperCase(), pct: m[3].replace(',', '.'), name: m[1].trim() });
+    });
+    if (lineHits.length >= 2 && lineHits.length === lines.length) return lineHits;
+
     var delim = raw.indexOf('\t') > -1 ? '\t'
               : raw.indexOf(';') > -1 ? ';'
               : /[^\d],|,[^\d]/.test(raw) ? ','
