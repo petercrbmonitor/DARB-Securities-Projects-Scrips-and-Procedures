@@ -110,6 +110,7 @@
     etpName: 'etp_name',
     identifier: 'identifier',
     sector: 'sector',
+    profileStatus: 'profile_status',
     status: 'status',
     assignedTo: 'assigned_to',
     assignedAt: 'assigned_at',
@@ -154,10 +155,10 @@
   // Fields flagged derived:true are NOT pushed generically - they are recomputed
   // on push by the D1/D2/D3 logic above, and locked in edit.
   var PROFILE_FIELDS = [
-    { a106: 'holds_spot_crypto',            a23: 'Drop_down_34',         push: true },
+    { a106: 'holds_spot_crypto',            a23: 'Drop_down_34',         push: true },  // derived by applyDerived()
     { a106: 'etp_bcbs_group',               a23: 'BCBS_Lowest_Value',    push: false, derived: true },
-    { a106: 'portfolio_type',               a23: 'Drop_down_36',         push: true },
-    { a106: 'etp_holdings_type',            a23: 'Text_52',              push: true },
+    { a106: 'portfolio_type',               a23: 'Drop_down_36',         push: true },  // derived by applyDerived()
+    { a106: 'etp_holdings_type',            a23: 'Text_52',              push: true },  // derived by applyDerived()
     { a106: 'staking_yield',                a23: 'Text_53',              push: true },
     { a106: 'expense_ratio',                a23: 'Text_16',              push: true },
     { a106: 'aum_expense_updated',          a23: 'Date_2',               push: true },
@@ -325,7 +326,7 @@
   }
 
   function doPull(providerFilter, allow) {
-    // Existing this-app records keyed by app23 id.
+    // Existing this-app records keyed by app23 id (status + lock drive the dequeue sweep).
     return fetchAll(THIS_APP, 'order by $id asc', [F.a23id, F.status, F.inEdit, F.order])
       .then(function (existing) {
         var byKey = {};
@@ -342,24 +343,102 @@
         return fetchAll(APP23, q).then(function (src) {
           var toAdd = [];
           var seq = maxOrder;
+          var qualifying = {};                 // master ids still qualifying (this pull)
           src.forEach(function (rec) {
             var key = rec.$id.value;
-            var cur = byKey[key];
-            if (cur) {
-              // Skip in-progress work; do not re-queue Updated unless re-added manually.
+            qualifying[key] = true;
+            if (byKey[key]) {
+              // Already tracked: skip in-progress work; do not re-queue Updated unless re-added manually.
               return;
             }
             seq += 1;
             toAdd.push(buildNewRecord(rec, seq));
           });
-          if (!toAdd.length) { busy(false); toast('Queue is up to date - nothing new to add.'); return 0; }
-          return chunkAdd(THIS_APP, toAdd).then(function () {
+
+          // Self-cleaning queue: a record whose master no longer qualifies (status left
+          // "Active" or sector left the allowlist) drops out of the queue. Only on a FULL
+          // refresh - a provider-filtered pull's qualifying set is partial and would wrongly
+          // dequeue every other provider. Never touch Assigned / in-edit records.
+          var toDrop = [];
+          if (!providerFilter) {
+            existing.forEach(function (r) {
+              var st = r[F.status] && r[F.status].value;
+              var locked = r[F.inEdit] && r[F.inEdit].value === 'Yes';
+              var mid = r[F.a23id] && r[F.a23id].value;
+              if (!locked && mid && !qualifying[mid] && (st === ST.QUEUE || st === ST.UPDATED)) {
+                toDrop.push(r);
+              }
+            });
+          }
+
+          if (!toAdd.length && !toDrop.length) {
             busy(false);
-            toast('Added ' + toAdd.length + ' profile(s) to the queue.');
-            return toAdd.length;
+            toast('Queue is up to date - nothing to add or remove.');
+            return 0;
+          }
+
+          return dequeueRecords(toDrop).then(function () {
+            if (!toAdd.length) {
+              busy(false);
+              toast(pullSummary(0, toDrop.length, providerFilter));
+              return 0;
+            }
+            return chunkAdd(THIS_APP, toAdd).then(function () {
+              busy(false);
+              toast(pullSummary(toAdd.length, toDrop.length, providerFilter));
+              return toAdd.length;
+            });
           });
         });
       });
+  }
+
+  // Move records out of the queue (status -> Not in Queue), refreshing profile_status
+  // from the master where it still exists so the mirror shows the current (non-Active)
+  // status. Used by the Refresh Queue self-cleaning sweep.
+  function dequeueRecords(records) {
+    if (!records || !records.length) return Promise.resolve();
+    var masterIds = records
+      .map(function (r) { return r[F.a23id] && r[F.a23id].value; })
+      .filter(Boolean);
+    return fetchMasterStatuses(masterIds).then(function (statusByMaster) {
+      var updates = records.map(function (r) {
+        var mid = r[F.a23id] && r[F.a23id].value;
+        var body = {};
+        body[F.status] = { value: ST.NOT };
+        // Master deleted -> not in the map; leave the last-known profile_status as-is.
+        if (mid && statusByMaster.hasOwnProperty(mid)) {
+          body[F.profileStatus] = { value: statusByMaster[mid] };
+        }
+        return { id: r.$id.value, record: body };
+      });
+      return chunkUpdate(THIS_APP, updates);
+    });
+  }
+
+  // master $id -> current Profile Status (Drop_down_22). Chunked so a long id list
+  // never blows the query length; masters that no longer exist just drop out of the map.
+  function fetchMasterStatuses(masterIds) {
+    var map = {};
+    var i = 0;
+    function next() {
+      if (i >= masterIds.length) return Promise.resolve(map);
+      var slice = masterIds.slice(i, i + 100).map(function (m) {
+        return '"' + String(m).replace(/"/g, '') + '"';
+      });
+      i += 100;
+      return fetchAll(APP_MASTER, '$id in (' + slice.join(',') + ')', ['$id', A23.profileStatus])
+        .then(function (recs) {
+          recs.forEach(function (m) { map[m.$id.value] = valOf(m, A23.profileStatus); });
+          return next();
+        });
+    }
+    return next();
+  }
+
+  function pullSummary(added, removed, providerFilter) {
+    if (providerFilter) return 'Added ' + added + ' profile(s) for "' + providerFilter + '".';
+    return 'Queue updated - added ' + added + ', removed ' + removed + '.';
   }
 
   // Common master -> this-app field mapping (shared by initial pull and re-pull).
@@ -369,6 +448,7 @@
     r[F.etpName] = { value: valOf(rec, A23.etpName) };
     r[F.identifier] = { value: identifierOf(rec) };
     r[F.sector] = { value: valOf(rec, A23.sector) };
+    r[F.profileStatus] = { value: valOf(rec, A23.profileStatus) }; // read-only master mirror
     PROFILE_FIELDS.forEach(function (m) { r[m.a106] = { value: valOf(rec, m.a23) }; });
     r[F.secTable] = { value: mapSecuritiesIn(rec) };
     r[F.table] = { value: mapHoldingsIn(rec) };
@@ -498,12 +578,20 @@
       busy(true, 'Re-pulling ' + ids.length + ' profile(s) from App ' + APP_MASTER + '...');
       return fetchAll(APP_MASTER, '$id in (' + ids.join(',') + ')').then(function (masters) {
         var updates = [];
+        var dropped = 0;
         masters.forEach(function (m) {
           var d = byMaster[m.$id.value];
           if (!d) return;
-          var body = mapMasterFields(m);
-          body[F.status] = { value: ST.QUEUE };
+          var body = mapMasterFields(m);     // also refreshes profile_status from the master
           body[F.inEdit] = { value: 'No' };
+          // Self-cleaning: a master that is no longer Active drops out of the queue
+          // (status -> Not in Queue) instead of being re-queued for review.
+          if (!APP23_ACTIVE_ONLY || valOf(m, A23.profileStatus) === 'Active') {
+            body[F.status] = { value: ST.QUEUE };
+          } else {
+            body[F.status] = { value: ST.NOT };
+            dropped += 1;
+          }
           updates.push({ id: d.$id.value, record: body });
           delete byMaster[m.$id.value];
         });
@@ -511,10 +599,12 @@
         var missing = Object.keys(byMaster).length;
         return chunkUpdate(THIS_APP, updates).then(function () {
           busy(false);
-          var msg = 'Re-queued ' + updates.length + ' due record(s) with fresh App ' + APP_MASTER + ' data.';
+          var requeued = updates.length - dropped;
+          var msg = 'Re-queued ' + requeued + ' due record(s) with fresh App ' + APP_MASTER + ' data.';
+          if (dropped) msg += '\n' + dropped + ' record(s) no longer Active - moved to "Not in Queue".';
           if (missing) msg += '\n' + missing + ' due record(s) had no matching master profile and were skipped.';
           toast(msg);
-          return updates.length;
+          return requeued;
         });
       });
     }).catch(function (e) { busy(false); alert('Queue due reviews failed: ' + msgOf(e)); });
@@ -600,6 +690,57 @@
     return api('/k/v1/record', 'PUT', { app: THIS_APP, id: recordId, record: body });
   }
 
+  /* ===================== DERIVED PROFILE FIELDS (from holdings) =====================
+   * App 23 derives these on its own form; a REST write from App 106 does not trigger
+   * that, and analysts edit the table here, so App 106 recomputes the same values from
+   * holdings_table and pushes them back. They are read-only (locked) mirrors in this app.
+   *   etp_holdings_type (Text_52)      - distinct asset classes present (+ "Equities"
+   *                                      when the sector is an equity sector), "; "-joined.
+   *                                      (matches App 23's Text_52 asset-summary automation)
+   *   holds_spot_crypto (Drop_down_34) - "Yes" when any Spot row carries a non-zero %.
+   *   portfolio_type    (Drop_down_36) - "Single Asset" for one distinct underlying
+   *                                      cryptoasset, "Basket" for two or more.
+   * Recomputed only when the table actually holds something, so an empty / parked table
+   * never clobbers the values pulled from App 23.
+   */
+  var DERIVED_ASSET_CLASSES = ['Funds', 'Futures', 'Options', 'Permitted Swaps', 'Spot', 'Equities'];
+  var DERIVED_ASSET_MAP = DERIVED_ASSET_CLASSES.reduce(function (m, n) { m[n.toLowerCase()] = n; return m; }, {});
+  var DERIVED_EQUITY_SECTORS = [
+    'DARB - Exchange Traded Note (ETN)',
+    'DARB - Exchange Traded Fund (ETF)',
+    'DARB - Closed-end Fund (CEF)',
+    'DA & DARB - Exchange Traded Fund (ETF)',
+    'DA & DARB - Exchange Traded Note (ETN)',
+    'DA & DARB - Closed-end Fund (CEF)'
+  ];
+
+  function applyDerived(rec) {
+    if (!rec || !rec[F.table]) return;
+    var rows = rec[F.table].value || [];
+    var classes = {}, underlyings = {}, hasSpot = false, hasHoldings = false;
+    rows.forEach(function (row) {
+      var v = row.value;
+      var pct = num(v[F.t_pct] && v[F.t_pct].value);
+      if (pct === null || pct === 0) return;          // only rows with a real weight count
+      hasHoldings = true;
+      var cls = DERIVED_ASSET_MAP[String((v[F.t_assetType] && v[F.t_assetType].value) || '').trim().toLowerCase()];
+      if (cls) { classes[cls] = true; if (cls === 'Spot') hasSpot = true; }
+      var u = String((v[F.t_underlying] && v[F.t_underlying].value) || '').trim();
+      if (u) underlyings[u] = true;
+    });
+    if (!hasHoldings) return;                         // nothing to derive from - keep App 23 values
+
+    var sector = (rec[F.sector] && rec[F.sector].value) || '';
+    if (DERIVED_EQUITY_SECTORS.indexOf(sector) > -1) classes['Equities'] = true;
+
+    derivedSet(rec, 'etp_holdings_type', Object.keys(classes).sort().join('; '));
+    derivedSet(rec, 'holds_spot_crypto', hasSpot ? 'Yes' : 'No');
+    var nUnderlying = Object.keys(underlyings).length;
+    if (nUnderlying >= 1) derivedSet(rec, 'portfolio_type', nUnderlying === 1 ? 'Single Asset' : 'Basket');
+  }
+
+  function derivedSet(rec, code, value) { if (rec[code]) rec[code].value = value; }
+
   /* ============================= SAVE / PUSH ============================= */
 
   // On edit submit: stamp metadata + as_of_date, sort rows desc, then push to App 23.
@@ -612,7 +753,11 @@
     // Mutate .value only; replacing the cell object drops its type and Kintone
     // rejects the save ("as_of_date.type is invalid").
     var rows = (rec[F.table].value || []).map(function (row) {
-      var hasPct = num(row.value[F.t_pct].value) !== null;
+      // Normalise the breakdown to a bare number string so a stray "%" (e.g. typed by
+      // hand) is stripped and never trips the NUMBER field's "can only be numbers" check.
+      var n = num(row.value[F.t_pct] && row.value[F.t_pct].value);
+      if (row.value[F.t_pct]) row.value[F.t_pct].value = (n === null ? '' : String(n));
+      var hasPct = n !== null;
       if (row.value[F.t_asOf]) row.value[F.t_asOf].value = hasPct ? serverNow : '';
       return row;
     });
@@ -626,6 +771,10 @@
     // D3: stamp App 23's "Holdings last updated by / Holding review date" mirrors.
     if (rec.holdings_last_updated_by_a23) rec.holdings_last_updated_by_a23.value = me().name;
     if (rec.holding_review_dt) rec.holding_review_dt.value = serverNow;
+
+    // Derive Holds Spot Crypto / Portfolio Type / ETP Holdings Type from the table
+    // (pushed back to App 23 by the push:true profile fields below).
+    applyDerived(rec);
 
     // Schedule the next review from now + this record's cadence.
     var cad = (rec[F.cadence] && rec[F.cadence].value) || DEFAULT_CADENCE;
@@ -789,6 +938,18 @@
     }
   );
 
+  // Recompute the table-derived profile fields live as the analyst edits the holdings
+  // (rows added/removed, or an Asset Type / % / Underlying cell changed).
+  kintone.events.on([
+    'app.record.create.change.' + F.table,        'app.record.edit.change.' + F.table,
+    'app.record.create.change.' + F.t_assetType,  'app.record.edit.change.' + F.t_assetType,
+    'app.record.create.change.' + F.t_pct,        'app.record.edit.change.' + F.t_pct,
+    'app.record.create.change.' + F.t_underlying, 'app.record.edit.change.' + F.t_underlying
+  ], function (event) {
+    applyDerived(event.record);
+    return event;
+  });
+
   kintone.events.on('app.record.edit.show', function (event) {
     if (!document.querySelector('.ehu-bar')) {
       var sp = kintone.app.record.getHeaderMenuSpaceElement();
@@ -804,6 +965,8 @@
     }
     // make system fields read-only in the form
     lockSystemFields(event);
+    // reflect the table-derived fields on open (heals any drift from the master)
+    applyDerived(event.record);
     return event;
   });
 
@@ -840,8 +1003,9 @@
   function lockSystemFields(event) {
     var rec = event.record;
     [F.a23id, F.status, F.assignedTo, F.assignedAt, F.inEdit, F.lastBy, F.lastAt, F.order, F.reviewDue,
-      F.issuer, F.etpName, F.identifier, F.sector,
-      'holdings_last_updated_by_a23', 'etp_bcbs_group', 'holding_review_dt']
+      F.issuer, F.etpName, F.identifier, F.sector, F.profileStatus,
+      'holdings_last_updated_by_a23', 'etp_bcbs_group', 'holding_review_dt',
+      'holds_spot_crypto', 'portfolio_type', 'etp_holdings_type']
       .forEach(function (code) {
         if (rec[code]) rec[code].disabled = true;
       });
@@ -869,6 +1033,22 @@
   // here - the analyst reviews, then the normal Save pushes to the master app.
 
   var PASTE_TYPE_OPTIONS = ['Spot', 'Futures', 'Options', 'Funds', 'Permitted Swaps'];
+
+  // kintone.app.record.set() validates the in-form record model and rejects any subtable
+  // cell that lacks a valid `type` ("...type is invalid"). REST writes (pull/push) do not
+  // need it, but Paste builds brand-new rows and feeds them through set(), so each cell
+  // must carry its field type. These match the deployed holdings_table schema.
+  var HOLDINGS_CELL_TYPES = (function () {
+    var m = {};
+    m[F.t_rowId] = 'SINGLE_LINE_TEXT';
+    m[F.t_assetType] = 'DROP_DOWN';
+    m[F.t_underlying] = 'SINGLE_LINE_TEXT';
+    m[F.t_bcbs] = 'DROP_DOWN';
+    m[F.t_pct] = 'NUMBER';
+    m[F.t_asOf] = 'DATETIME';
+    return m;
+  })();
+  function hcell(code, value) { return { type: HOLDINGS_CELL_TYPES[code], value: value }; }
 
   function pnorm(s) { return String(s || '').replace(/[^A-Za-z0-9]/g, '').toLowerCase(); }
 
@@ -1033,17 +1213,20 @@
         if (!bcbs) nobcbs++;
         var numPct = num(p.pct);
         var c = {};
-        c[F.t_rowId] = { value: '' };
-        c[F.t_assetType] = { value: breakdownType || '' };
-        c[F.t_underlying] = { value: underlying };
-        c[F.t_bcbs] = { value: bcbs };
-        c[F.t_pct] = { value: numPct === null ? '' : String(numPct) };
-        c[F.t_asOf] = { value: numPct === null ? '' : dateVal };
+        c[F.t_rowId] = hcell(F.t_rowId, '');
+        c[F.t_assetType] = hcell(F.t_assetType, breakdownType || '');
+        c[F.t_underlying] = hcell(F.t_underlying, underlying);
+        c[F.t_bcbs] = hcell(F.t_bcbs, bcbs);
+        // breakdown_pct is a NUMBER field - store the bare number only (num() already
+        // stripped any "%"/commas) so the value never trips "can only be numbers".
+        c[F.t_pct] = hcell(F.t_pct, numPct === null ? '' : String(numPct));
+        c[F.t_asOf] = hcell(F.t_asOf, (numPct !== null && dateVal) ? dateVal : null);
         rows.push({ value: c });
       });
 
       rows.sort(function (a, b) { return (num(b.value[F.t_pct].value) || -1) - (num(a.value[F.t_pct].value) || -1); });
       rec[F.table].value = rows;
+      applyDerived(rec);                 // refresh Holds Spot / Portfolio Type / Holdings Type
       kintone.app.record.set({ record: rec });
 
       var msg = parsed.length + ' row(s) added' + (replace ? ' (replaced existing).' : '.');

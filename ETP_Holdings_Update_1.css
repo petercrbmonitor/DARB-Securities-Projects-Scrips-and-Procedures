@@ -1,156 +1,228 @@
 /* =====================================================================
    ETP Holdings Update - Kintone CSS customization (App 106)
-   Theme: clean / floating-bubble / teal
-   Attach under: App Settings -> JavaScript and CSS Customization -> Desktop (CSS)
-   then Deploy/Update the app.
+   Theme: "Teal workstation" - clean, fintech-grade, floating toolbar.
 
-   This file themes the DOM that ETP_Holdings_Update.js actually injects on
-   the NATIVE Kintone screens:
-     - the header toolbar (.etp-bar) and its buttons (.etp-btn ...)
-     - the top progress banner (.etp-busy)
-     - the Paste allocation modal (.etp-modal-ov / .etp-modal ...)
-   The native record form is left in place; the optional block at the very
-   bottom applies the long-edit-session preferences to it.
+   Attach under: App Settings -> JavaScript and CSS Customization -> Desktop
+   (CSS), then Deploy/Update the app.
+
+   Styles ONLY the DOM that ETP_Holdings_Update.js injects on the native
+   Kintone screens (class/ID hooks must stay in sync with the JS):
+     - header toolbar ........ .etp-bar  +  .etp-btn / -primary / -ghost
+     - progress banner ....... .etp-busy           (JS sets position:fixed)
+     - paste modal ........... .etp-modal-ov / .etp-modal*
+   The native record form is left alone except for the small, optional
+   "long edit session" block at the very bottom (remove it to opt out).
    ===================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap');
 
 /* ---------- Design tokens ---------- */
 :root{
-  --etp-bg:#e7f0ee;
-  --etp-bg-2:#f3f8f7;
+  /* surfaces & ink */
   --etp-surface:#ffffff;
-  --etp-ink:#0a2c29;
-  --etp-muted:#5d807c;
+  --etp-surface-2:#f5faf9;
+  --etp-ink:#0c2b28;
+  --etp-muted:#557571;
   --etp-faint:#8aa9a5;
-  --etp-line:#e0ecea;
-  --etp-line-soft:#eef5f4;
+  /* hairlines */
+  --etp-line:#dbe7e5;
+  --etp-line-2:#eaf3f1;
+  /* brand teal ramp */
   --etp-teal:#0f766e;
-  --etp-teal-deep:#0b4f49;
-  --etp-teal-dark:#063a35;
-  --etp-teal-soft:#d6ebe7;
-  --etp-teal-tint:#f0f8f6;
-  --etp-accent:#14b8a6;
-  --etp-shadow-sm:0 1px 2px rgba(8,48,44,.04);
-  --etp-shadow:0 18px 40px -18px rgba(10,60,55,.28), 0 4px 14px -6px rgba(10,60,55,.12);
-  --etp-r-md:18px;
-  --etp-r-sm:12px;
+  --etp-teal-600:#0d6b63;
+  --etp-teal-700:#0a554e;
+  --etp-teal-800:#08433d;
+  --etp-accent:#15bda9;
+  --etp-mint:#d6ece7;
+  --etp-mint-2:#eef8f5;
+  /* effects */
+  --etp-ring:0 0 0 3px rgba(15,118,110,.24);
+  --etp-shadow-1:0 1px 2px rgba(8,40,36,.06);
+  --etp-shadow-2:0 10px 26px -14px rgba(8,52,47,.34), 0 2px 8px -4px rgba(8,52,47,.16);
+  --etp-shadow-3:0 30px 64px -28px rgba(6,46,42,.50), 0 10px 28px -16px rgba(6,46,42,.28);
+  /* geometry & type */
+  --etp-r:12px;
+  --etp-r-lg:20px;
   --etp-r-pill:999px;
-  --etp-font:'Hanken Grotesk',Calibri,-apple-system,BlinkMacSystemFont,Arial,sans-serif;
-}
-
-/* ---------- Header toolbar (floating bubble) ----------
-   JS injects: <div class="ehu-bar etp-bar"> <button class="etp-btn ...">…</div> */
-.etp-bar{
-  display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;
-  background:var(--etp-surface);
-  border:1px solid var(--etp-line);
-  border-radius:var(--etp-r-pill);
-  box-shadow:var(--etp-shadow);
-  padding:8px 12px;margin:10px 0 6px;
-  animation:etpFloatIn .6s cubic-bezier(.2,.8,.2,1) both;
-}
-
-/* ---------- Buttons ---------- */
-.etp-btn{
-  font-family:var(--etp-font);font-size:.9rem;font-weight:600;cursor:pointer;
-  padding:10px 22px;border-radius:var(--etp-r-pill);transition:.22s;
-  border:1px solid transparent;display:inline-flex;align-items:center;gap:9px;line-height:1;
-}
-.etp-btn-ghost{background:var(--etp-surface);color:var(--etp-teal-deep);border-color:var(--etp-line)}
-.etp-btn-ghost:hover{border-color:var(--etp-teal);background:var(--etp-teal-tint)}
-.etp-btn-primary{
-  background:linear-gradient(150deg,var(--etp-teal) 0%,var(--etp-teal-dark) 100%);
-  color:#fff;box-shadow:0 12px 26px -12px rgba(11,79,73,.9);
-}
-.etp-btn-primary:hover{transform:translateY(-1px);box-shadow:0 18px 30px -12px rgba(11,79,73,.95)}
-.etp-btn-primary:active{transform:translateY(0)}
-
-/* ---------- Top progress banner ----------
-   JS injects: <div id="ehu-busy" class="etp-busy"> with position:fixed inline. */
-.etp-busy{
-  background:linear-gradient(90deg,var(--etp-teal) 0%,var(--etp-teal-deep) 100%);
-  color:#eafffb;font-family:var(--etp-font);font-size:.86rem;font-weight:600;
-  letter-spacing:.01em;text-align:center;padding:9px 14px;
-  box-shadow:0 6px 18px -8px rgba(11,79,73,.6);
-}
-
-/* ---------- Paste allocation modal ---------- */
-.etp-modal-ov{
-  position:fixed;inset:0;z-index:10000;
-  background:rgba(6,40,36,.42);backdrop-filter:blur(2px);
-  display:flex;align-items:center;justify-content:center;
-  animation:etpFade .2s ease both;
-}
-.etp-modal{
-  font-family:var(--etp-font);color:var(--etp-ink);
-  background:var(--etp-surface);border:1px solid var(--etp-line);
-  border-radius:var(--etp-r-md);box-shadow:var(--etp-shadow);
-  width:560px;max-width:92vw;padding:26px 28px;
-  animation:etpFloatIn .35s cubic-bezier(.2,.8,.2,1) both;
-}
-.etp-modal *{box-sizing:border-box}
-.etp-modal-title{font-size:1.25rem;font-weight:700;letter-spacing:-.02em;margin:0 0 6px}
-.etp-modal-sub{font-size:.84rem;color:var(--etp-muted);font-weight:500;margin:0 0 16px;line-height:1.45}
-
-.etp-modal-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:16px;margin-bottom:14px}
-.etp-modal-controls span{display:flex;flex-direction:column;gap:5px}
-.etp-modal-controls label{font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--etp-faint)}
-.etp-modal-controls input[type=date],
-.etp-modal-controls select{
-  font-family:var(--etp-font);font-size:.9rem;color:var(--etp-ink);
-  border:1px solid var(--etp-line);border-radius:var(--etp-r-sm);padding:9px 12px;background:var(--etp-surface);outline:none;
-}
-.etp-modal-controls input[type=date]:focus,
-.etp-modal-controls select:focus{border-color:var(--etp-teal)}
-.etp-modal-check{
-  flex-direction:row !important;align-items:center;gap:8px !important;
-  font-size:.82rem !important;font-weight:600 !important;letter-spacing:0 !important;
-  text-transform:none !important;color:var(--etp-teal-deep) !important;cursor:pointer;padding-bottom:9px;
-}
-.etp-modal-check input{accent-color:var(--etp-teal);width:16px;height:16px;cursor:pointer}
-
-.etp-modal-text{
-  width:100%;height:210px;resize:vertical;
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.82rem;line-height:1.5;
-  color:var(--etp-ink);background:var(--etp-teal-tint);
-  border:1px solid var(--etp-line);border-radius:var(--etp-r-sm);padding:12px 14px;outline:none;
-}
-.etp-modal-text:focus{border-color:var(--etp-teal);background:var(--etp-surface)}
-.etp-modal-text::placeholder{color:var(--etp-faint)}
-
-.etp-modal-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:18px}
-
-/* ---------- Animations ---------- */
-@keyframes etpFloatIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-@keyframes etpFade{from{opacity:0}to{opacity:1}}
-
-/* ---------- Responsive ---------- */
-@media(max-width:600px){
-  .etp-modal{padding:20px}
-  .etp-modal-controls{gap:12px}
+  --etp-font:'Hanken Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',Calibri,Arial,sans-serif;
+  --etp-mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
 }
 
 /* =====================================================================
-   OPTIONAL - native Kintone styling for long edit sessions.
-   Reflects standing prefs: no outer wrapper border, faint internal
-   field borders, sticky table headers, tables fit to content.
-   These target Kintone's own classes, so !important is used to win
-   the cascade. Remove this whole block to leave the native form as-is.
+   Header toolbar - floating pill
+   JS injects: <div class="ehu-bar etp-bar"><button class="etp-btn ...">…
    ===================================================================== */
-
-/* No outer wrapper border on the record form */
-.gaia-argoui-app-show .control-gaia,
-.gaia-argoui-app-edit .control-gaia{border:0 !important;box-shadow:none !important}
-
-/* Faint internal field borders */
-.gaia-argoui-app-show .control-value-gaia,
-.gaia-argoui-app-edit .control-value-gaia{
-  border:1px solid var(--etp-line-soft) !important;border-radius:8px !important;
+.etp-bar{
+  display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin:12px 0 8px;padding:7px 9px;
+  background:linear-gradient(180deg,var(--etp-surface),var(--etp-surface-2));
+  border:1px solid var(--etp-line);
+  border-radius:var(--etp-r-pill);
+  box-shadow:var(--etp-shadow-2);
+  animation:etpRise .5s cubic-bezier(.2,.8,.2,1) both;
 }
 
-/* Sticky header row on native subtables */
-.subtable-gaia thead th{position:sticky !important;top:0 !important;z-index:2 !important}
+/* =====================================================================
+   Buttons
+   ===================================================================== */
+.etp-btn{
+  font-family:var(--etp-font);font-size:13px;font-weight:600;line-height:1;
+  letter-spacing:.01em;white-space:nowrap;cursor:pointer;
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 18px;border:1px solid transparent;border-radius:var(--etp-r-pill);
+  transition:transform .15s ease,box-shadow .2s ease,background .2s ease,
+             border-color .2s ease,color .2s ease;
+  -webkit-tap-highlight-color:transparent;
+}
+.etp-btn:focus{outline:none}
+.etp-btn:focus-visible{box-shadow:var(--etp-ring)}
+.etp-btn:disabled,.etp-btn[disabled]{opacity:.5;cursor:not-allowed;transform:none!important;box-shadow:none!important}
 
-/* Tables fit to content rather than stretching full width */
-.subtable-gaia{width:auto !important;max-width:100% !important}
+/* secondary / ghost */
+.etp-btn-ghost{background:var(--etp-surface);color:var(--etp-teal-700);border-color:var(--etp-line)}
+.etp-btn-ghost:hover{background:var(--etp-mint-2);border-color:var(--etp-teal);color:var(--etp-teal-800)}
+.etp-btn-ghost:active{background:var(--etp-mint)}
+
+/* primary */
+.etp-btn-primary{
+  color:#f3fffd;
+  background:linear-gradient(180deg,var(--etp-teal) 0%,var(--etp-teal-700) 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 10px 22px -12px rgba(10,85,78,.9);
+}
+.etp-btn-primary:hover{
+  transform:translateY(-1px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.24),0 16px 28px -12px rgba(10,85,78,.95);
+}
+.etp-btn-primary:active{transform:translateY(0);box-shadow:0 6px 14px -8px rgba(10,85,78,.9)}
+
+/* =====================================================================
+   Progress banner - JS sets position:fixed;top:0;left:0;right:0 inline
+   ===================================================================== */
+.etp-busy{
+  font-family:var(--etp-font);font-size:13px;font-weight:600;letter-spacing:.01em;
+  color:#eafffb;text-align:center;padding:11px 16px;
+  background:linear-gradient(90deg,var(--etp-teal-700),var(--etp-teal) 55%,var(--etp-teal-600));
+  box-shadow:0 10px 24px -12px rgba(8,67,61,.6);
+  position:relative;overflow:hidden;
+}
+.etp-busy::after{                              /* indeterminate progress sweep */
+  content:"";position:absolute;left:0;bottom:0;height:2px;width:38%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);
+  animation:etpSweep 1.15s linear infinite;
+}
+
+/* =====================================================================
+   Paste allocation modal
+   ===================================================================== */
+.etp-modal-ov{
+  position:fixed;inset:0;z-index:10000;
+  display:flex;align-items:center;justify-content:center;padding:24px;
+  background:radial-gradient(120% 120% at 50% 0%,rgba(6,40,36,.42),rgba(6,40,36,.58));
+  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  animation:etpFade .18s ease both;
+}
+.etp-modal{
+  position:relative;overflow:hidden;
+  width:580px;max-width:100%;
+  padding:28px 28px 24px;
+  font-family:var(--etp-font);color:var(--etp-ink);
+  background:var(--etp-surface);
+  border:1px solid var(--etp-line);
+  border-radius:var(--etp-r-lg);
+  box-shadow:var(--etp-shadow-3);
+  animation:etpPop .28s cubic-bezier(.2,.9,.25,1) both;
+}
+.etp-modal *{box-sizing:border-box}
+.etp-modal::before{                            /* accent strip */
+  content:"";position:absolute;top:0;left:0;right:0;height:4px;
+  background:linear-gradient(90deg,var(--etp-accent),var(--etp-teal),var(--etp-teal-700));
+}
+.etp-modal-title{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:4px 0 6px}
+.etp-modal-sub{font-size:13px;line-height:1.5;color:var(--etp-muted);margin:0 0 18px}
+
+/* controls row */
+.etp-modal-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:14px;margin-bottom:14px}
+.etp-modal-controls span{display:flex;flex-direction:column;gap:6px}
+.etp-modal-controls label{
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--etp-faint);
+}
+.etp-modal-controls input[type=date],
+.etp-modal-controls select{
+  font-family:var(--etp-font);font-size:14px;color:var(--etp-ink);
+  background:var(--etp-surface);border:1px solid var(--etp-line);border-radius:10px;
+  padding:9px 12px;outline:none;transition:border-color .15s ease,box-shadow .15s ease;
+}
+.etp-modal-controls input[type=date]:focus,
+.etp-modal-controls select:focus{border-color:var(--etp-teal);box-shadow:var(--etp-ring)}
+
+.etp-modal-check{
+  flex-direction:row!important;align-items:center;gap:9px!important;
+  font-size:13px!important;font-weight:600!important;letter-spacing:0!important;text-transform:none!important;
+  color:var(--etp-teal-800)!important;cursor:pointer;
+  padding:9px 12px;border:1px solid var(--etp-line);border-radius:10px;background:var(--etp-mint-2);
+  transition:border-color .15s ease,background .15s ease;
+}
+.etp-modal-check:hover{border-color:var(--etp-teal)}
+.etp-modal-check input{accent-color:var(--etp-teal);width:16px;height:16px;cursor:pointer}
+
+/* paste textarea */
+.etp-modal-text{
+  width:100%;height:200px;resize:vertical;
+  font-family:var(--etp-mono);font-size:12.5px;line-height:1.55;color:var(--etp-ink);
+  background:var(--etp-surface-2);
+  border:1px solid var(--etp-line);border-radius:12px;padding:13px 14px;outline:none;
+  transition:border-color .15s ease,box-shadow .15s ease,background .15s ease;
+}
+.etp-modal-text:focus{border-color:var(--etp-teal);background:var(--etp-surface);box-shadow:var(--etp-ring)}
+.etp-modal-text::placeholder{color:var(--etp-faint)}
+
+.etp-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+
+/* =====================================================================
+   Animations + motion preferences
+   ===================================================================== */
+@keyframes etpRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes etpPop{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes etpFade{from{opacity:0}to{opacity:1}}
+@keyframes etpSweep{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}
+
+@media (prefers-reduced-motion:reduce){
+  .etp-bar,.etp-modal,.etp-modal-ov{animation:none!important}
+  .etp-busy::after{animation:none!important;opacity:0}
+  .etp-btn{transition:none!important}
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width:600px){
+  .etp-modal{padding:22px 18px 18px}
+  .etp-modal-controls{gap:10px}
+  .etp-modal-controls span{flex:1 1 auto}
+  .etp-btn{padding:9px 14px}
+}
+
+/* =====================================================================
+   OPTIONAL - native Kintone polish for long edit sessions.
+   Reflects standing prefs: lighter outer wrapper, faint field borders,
+   sticky + tinted subtable headers, readable zebra/hover rows, tables
+   fit to content. Targets Kintone's own classes, so !important is used.
+   Delete this whole block to leave the native form untouched.
+   ===================================================================== */
+
+/* lighten the heavy outer wrapper, keep fields legible */
+.gaia-argoui-app-show .control-gaia,
+.gaia-argoui-app-edit .control-gaia{border:0!important;box-shadow:none!important}
+.gaia-argoui-app-show .control-value-gaia,
+.gaia-argoui-app-edit .control-value-gaia{
+  border:1px solid var(--etp-line-2)!important;border-radius:8px!important;
+}
+
+/* subtables: sticky tinted header, zebra rows, hover highlight, fit-to-content */
+.subtable-gaia{width:auto!important;max-width:100%!important}
+.subtable-gaia thead th{
+  position:sticky!important;top:0!important;z-index:2!important;
+  background:var(--etp-mint-2)!important;color:var(--etp-teal-800)!important;
+  font-weight:700!important;letter-spacing:.01em;
+  border-bottom:1px solid var(--etp-line)!important;
+}
+.subtable-gaia tbody tr:nth-child(even) td{background:var(--etp-surface-2)!important}
+.subtable-gaia tbody tr:hover td{background:var(--etp-mint-2)!important}
