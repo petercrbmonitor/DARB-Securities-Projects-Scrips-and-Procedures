@@ -1188,7 +1188,7 @@
 
   kintone.events.on('app.record.edit.show', function (event) {
     loadRefByKey();                // warm the BCBS lookup cache for synchronous auto-fill
-    // "Paste allocation" renders in the in-form space field under the holdings table
+    // "Holdings Assistant" renders in the in-form space field under the holdings table
     // (element id "pasteAllocSpace"). No Cancel button here - Kintone's own Cancel handles
     // discard, and detail.show releases the lock if the edit was cancelled.
     var ps = null;
@@ -1196,7 +1196,7 @@
     if (!ps) ps = kintone.app.record.getHeaderMenuSpaceElement();   // fallback if space missing
     if (ps && !ps.querySelector('.ehu-paste-btn')) {
       var b = bar();
-      var pb = mkBtn('Paste allocation', function () { openPasteModal(); }, true);
+      var pb = mkBtn('Holdings Assistant', function () { openPasteModal(); }, true);
       pb.className += ' ehu-paste-btn';
       b.appendChild(pb);
       ps.appendChild(b);
@@ -1336,7 +1336,7 @@
         '<li><b>Add to Queue / Refresh Queue</b> - pull qualifying profiles from the master app.</li>' +
         '<li><b>Queue Due Reviews (N)</b> - re-pull records whose review is due (N = how many are due now).</li>' +
         '<li><b>Fetch Record</b> - assigns the next queued record to you and opens it to edit.</li>' +
-        '<li><b>Paste allocation</b> (edit screen) - paste a holdings list; rows are matched to the reference app and added for review, then <b>Save</b>.</li>' +
+        '<li><b>Holdings Assistant</b> (edit screen) - paste a holdings list or extract it from text/a screenshot with AI; rows are matched to the reference app and added for review, then <b>Save</b>.</li>' +
         '<li><b>Save</b> - writes the holdings back to the master app and schedules the next review.</li>' +
         '<li><b>Master Profile / Open Box folder</b> - open the linked master record / Box folder.</li>' +
       '</ul>' +
@@ -1506,6 +1506,40 @@
     return { status: 'ambiguous', options: pool.map(function (c) { return c.key; }) };
   }
 
+  /* ===================== HOLDINGS ASSISTANT (optional Gemini extraction) =====================
+   * Folded in from the standalone DARB "Profile assistant". Each analyst stores their own free
+   * Gemini key (aistudio.google.com/apikey) in this browser under the SAME storage key, so a
+   * key saved in the DARB app is reused here. "Extract with AI" turns pasted text / a pasted or
+   * attached screenshot into "Name (TICKER) - weight%" lines, which the paste parser then reads.
+   * The key is sent directly to Google, never to a shared server. */
+  var AI_MODEL = 'gemini-3.5-flash';
+  var AI_STORE_KEY = 'darbAiGeminiKey';
+  var AI_HOLDINGS_INSTR = 'The input is a list of crypto holdings, given either as pasted text (often with each asset duplicated: name, name with ticker, then weight) or as an attached image of a holdings breakdown. Output one line per asset as "Name (TICKER) - weight%". Include an asset only where its name/ticker/weight is clearly legible; where a box shows only an icon and a percentage with no text label, write "UNVERIFIED (weight%)". Do NOT fabricate, estimate, or identify assets from logos or icons; if a value is absent, write "[missing]". Return only the list.';
+  function aiEndpoint(key) { return 'https://generativelanguage.googleapis.com/v1beta/models/' + AI_MODEL + ':generateContent?key=' + encodeURIComponent(key); }
+  function aiGetKey() { try { return localStorage.getItem(AI_STORE_KEY); } catch (e) { return null; } }
+  function aiSetKey(v) { try { localStorage.setItem(AI_STORE_KEY, v); } catch (e) { /* ignore */ } }
+  // Resolve to the extracted holdings text (or reject with a friendly message).
+  function aiExtractHoldings(text, image) {
+    var key = aiGetKey();
+    if (!key) return Promise.reject(new Error('Enter your Gemini key first.'));
+    var parts = [{ text: AI_HOLDINGS_INSTR + (text ? ('\n\n---\nTEXT:\n' + text) : '') }];
+    if (image) parts.push({ inlineData: image });
+    return fetch(aiEndpoint(key), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: parts }], generationConfig: { temperature: 0.2 } })
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (res.status === 429) throw new Error('Gemini rate limit - wait a moment and try again.');
+        if (res.status === 400 || res.status === 404) throw new Error('Request rejected - check the API key. (' + ((data.error && data.error.message) || res.status) + ')');
+        if (data.error) throw new Error(data.error.message || 'request rejected');
+        var c = data && data.candidates && data.candidates[0];
+        var out = c && c.content && c.content.parts && c.content.parts[0] && c.content.parts[0].text;
+        return (out || '').trim();
+      });
+    });
+  }
+
   function openPasteModal() {
     if (document.getElementById('etp-paste-ov')) return;
     var ov = document.createElement('div');
@@ -1515,15 +1549,29 @@
       PASTE_TYPE_OPTIONS.map(function (o) { return '<option value="' + o + '">' + o + '</option>'; }).join('');
     var box = document.createElement('div');
     box.className = 'etp-modal';
+    box.style.maxHeight = '92vh';
+    box.style.overflowY = 'auto';
     box.innerHTML =
-      '<h3 class="etp-modal-title">Paste allocation</h3>' +
-      '<p class="etp-modal-sub">Paste a name / ticker / weight block. Tickers are matched against the reference app (App ' + APP_REF + '); BCBS Group fills automatically on a match.</p>' +
-      '<div class="etp-modal-controls">' +
+      '<h3 class="etp-modal-title">Holdings Assistant</h3>' +
+      '<p class="etp-modal-sub">Paste a name / ticker / weight block, or use AI to extract holdings from messy text or a screenshot. Rows are matched against the reference app (App ' + APP_REF + '); BCBS Group fills automatically on a match.</p>' +
+      '<textarea id="etp-paste-text" class="etp-modal-text" placeholder="Bitcoin (BTC) 52.69%&#10;Ethereum ETH 18.84&#10;...   (or paste a screenshot below, then Extract with AI)"></textarea>' +
+      '<div class="etp-ai-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+        '<button id="etp-ai-attach" class="etp-btn etp-btn-ghost" type="button">Attach image</button>' +
+        '<span id="etp-ai-imgname" style="font-size:.8rem;color:var(--etp-muted)"></span>' +
+        '<button id="etp-ai-run" class="etp-btn etp-btn-primary" type="button">Extract with AI</button>' +
+        '<span id="etp-ai-status" style="font-size:.8rem;color:var(--etp-muted)"></span>' +
+        '<input id="etp-ai-file" type="file" accept="image/*" style="display:none"/>' +
+      '</div>' +
+      '<div id="etp-ai-keyrow" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+        '<input id="etp-ai-key" type="password" placeholder="Gemini API key (stored in this browser only)" style="flex:1;min-width:200px;padding:8px 10px;border:1px solid var(--etp-line);border-radius:8px;font-family:var(--etp-font)"/>' +
+        '<button id="etp-ai-savekey" class="etp-btn etp-btn-primary" type="button">Save key</button>' +
+        '<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="font-size:.8rem;color:var(--etp-teal)">Get a free key</a>' +
+      '</div>' +
+      '<div class="etp-modal-controls" style="margin-top:12px">' +
         '<span><label>As of date</label><input id="etp-paste-date" type="date"/></span>' +
         '<span><label>Asset breakdown</label><select id="etp-paste-type">' + typeOpts + '</select></span>' +
         '<label class="etp-modal-check"><input id="etp-paste-replace" type="checkbox" checked/> Replace existing rows</label>' +
       '</div>' +
-      '<textarea id="etp-paste-text" class="etp-modal-text" placeholder="Bitcoin (BTC) 52.69%&#10;Ethereum ETH 18.84&#10;..."></textarea>' +
       '<div class="etp-modal-actions">' +
         '<button id="etp-paste-cancel" class="etp-btn etp-btn-ghost">Cancel</button>' +
         '<button id="etp-paste-run" class="etp-btn etp-btn-primary">Add rows</button>' +
@@ -1534,6 +1582,51 @@
     var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); };
     ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
     box.querySelector('#etp-paste-cancel').onclick = close;
+
+    // ---- Holdings Assistant (AI) wiring ----
+    var aiImage = null;
+    var statusEl = box.querySelector('#etp-ai-status');
+    var keyRow = box.querySelector('#etp-ai-keyrow');
+    var setAiStatus = function (m) { statusEl.textContent = m || ''; };
+    var aiLoadImage = function (file) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        aiImage = { mimeType: file.type || 'image/png', data: String(reader.result).split(',')[1] };
+        box.querySelector('#etp-ai-imgname').innerHTML = 'image attached &#10003; <span id="etp-ai-imgx" style="cursor:pointer;color:#c33">&times;</span>';
+        var x = box.querySelector('#etp-ai-imgx');
+        if (x) x.onclick = function () { aiImage = null; box.querySelector('#etp-ai-imgname').textContent = ''; };
+      };
+      reader.readAsDataURL(file);
+    };
+    var fileInput = box.querySelector('#etp-ai-file');
+    box.querySelector('#etp-ai-attach').onclick = function () { fileInput.click(); };
+    fileInput.onchange = function (e) { if (e.target.files[0]) aiLoadImage(e.target.files[0]); };
+    box.addEventListener('paste', function (e) {
+      var items = (e.clipboardData && e.clipboardData.items) || [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image/') === 0) { e.preventDefault(); aiLoadImage(items[i].getAsFile()); return; }
+      }
+    });
+    box.querySelector('#etp-ai-savekey').onclick = function () {
+      var v = box.querySelector('#etp-ai-key').value.trim();
+      if (v) { aiSetKey(v); keyRow.style.display = 'none'; setAiStatus('Key saved.'); }
+    };
+    box.querySelector('#etp-ai-run').onclick = function () {
+      if (!aiGetKey()) { keyRow.style.display = 'flex'; setAiStatus('Paste your Gemini key, then Save key.'); return; }
+      var srcText = box.querySelector('#etp-paste-text').value.trim();
+      if (!srcText && !aiImage) { setAiStatus('Paste text or attach a screenshot first.'); return; }
+      setAiStatus('Extracting with AI...');
+      aiExtractHoldings(srcText, aiImage).then(function (out) {
+        if (!out) { setAiStatus('No holdings returned - try a clearer screenshot.'); return; }
+        box.querySelector('#etp-paste-text').value = out;
+        setAiStatus('Done - review the list, then Add rows.');
+      }).catch(function (err) {
+        var m = msgOf(err);
+        setAiStatus(m);
+        if (/key/i.test(m)) keyRow.style.display = 'flex';
+      });
+    };
+
     box.querySelector('#etp-paste-run').onclick = function () {
       var text = box.querySelector('#etp-paste-text').value;
       var date = box.querySelector('#etp-paste-date').value;
