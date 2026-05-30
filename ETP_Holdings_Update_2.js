@@ -115,7 +115,9 @@
     // derived targets (App 23's own automations normally set these in the UI)
     bcbsRollup: 'BCBS_Lowest_Value', // ETP BCBS Group (worst-of rollup)
     updatedBy: 'HoldingsUpdateSummary', // Holdings last updated by (name)
-    updatedAt: 'Date_and_time_1'     // Holding review date and time
+    updatedAt: 'Date_and_time_1',    // Holding review date and time
+    boxName: 'Text_4',               // Box folder name
+    boxRef: 'Text_5'                 // Box folder reference (id or URL) the Box plugin uses
   };
 
   // Reference app (App 85 test / App 34 live) field codes - for BCBS auto-fill.
@@ -129,6 +131,8 @@
   var F = {
     a23id: 'app23_record_id',
     a23link: 'app23_link',
+    boxName: 'box_folder_name',
+    boxLink: 'box_link',
     issuer: 'issuer',
     etpName: 'etp_name',
     identifier: 'identifier',
@@ -603,6 +607,14 @@
     return id ? (location.origin + '/k/' + APP_MASTER + '/show#record=' + encodeURIComponent(id)) : '';
   }
 
+  // Box folder URL from App 23's Text_5 reference: use it directly if it is already a URL,
+  // otherwise treat it as a Box folder id. Empty -> '' (no button shown).
+  function boxUrl(ref) {
+    ref = (ref == null ? '' : String(ref)).trim();
+    if (!ref) return '';
+    return /^https?:\/\//i.test(ref) ? ref : ('https://app.box.com/folder/' + encodeURIComponent(ref));
+  }
+
   // Common master -> this-app field mapping (shared by initial pull and re-pull).
   function mapMasterFields(rec) {
     var r = {};
@@ -612,6 +624,8 @@
     r[F.sector] = { value: valOf(rec, A23.sector) };
     r[F.profileStatus] = { value: valOf(rec, A23.profileStatus) }; // read-only master mirror
     r[F.a23link] = { value: masterUrl(rec.$id && rec.$id.value) };  // click-through to master
+    r[F.boxName] = { value: valOf(rec, A23.boxName) };              // Box folder name (mirror)
+    r[F.boxLink] = { value: boxUrl(valOf(rec, A23.boxRef)) };       // Box folder URL (button)
     PROFILE_FIELDS.forEach(function (m) { r[m.a106] = { value: valOf(rec, m.a23) }; });
     r[F.secTable] = { value: mapSecuritiesIn(rec) };
     r[F.table] = { value: mapHoldingsIn(rec) };
@@ -1189,7 +1203,7 @@
     lockSystemFields(event);
     // reflect the table-derived fields on open (heals any drift from the master)
     applyDerived(event.record);
-    renderMasterButton();              // show the App 23 link field as a button
+    renderRecordButtons();             // App 23 + Box link fields as buttons
     return event;
   });
 
@@ -1198,7 +1212,7 @@
     hideRowId();
     a106Fields();                  // warm App 106 field map for "Refresh from master"
     releaseIfCancelled(event.record);  // native Cancel lands here - free our lock if so
-    renderMasterButton();              // show the App 23 link field as a button
+    renderRecordButtons();             // App 23 + Box link fields as buttons
     if (document.querySelector('.ehu-bar')) return event;
     var sp = kintone.app.record.getHeaderMenuSpaceElement();
     if (!sp) return event;
@@ -1229,7 +1243,7 @@
   function lockSystemFields(event) {
     var rec = event.record;
     [F.a23id, F.status, F.assignedTo, F.assignedAt, F.inEdit, F.lastBy, F.lastAt, F.order, F.reviewDue,
-      F.issuer, F.etpName, F.identifier, F.sector, F.profileStatus, F.a23link,
+      F.issuer, F.etpName, F.identifier, F.sector, F.profileStatus, F.a23link, F.boxName, F.boxLink,
       'holdings_last_updated_by_a23', 'etp_bcbs_group', 'holding_review_dt',
       'holds_spot_crypto', 'portfolio_type', 'etp_holdings_type']
       .forEach(function (code) {
@@ -1252,20 +1266,25 @@
     try { kintone.app.record.setFieldShown(F.t_rowId, false); } catch (e) { /* older UI */ }
   }
 
-  // Render the Master Record (app23_link) field as a themed button instead of a raw URL.
-  function renderMasterButton() {
+  // Render a LINK field as a themed button (opens the URL in a new tab) instead of raw text.
+  function renderLinkButton(code, label, marker) {
     try {
-      var url = (kintone.app.record.get().record[F.a23link] || {}).value;
-      var el = kintone.app.record.getFieldElement(F.a23link);
-      if (!url || !el || el.querySelector('.ehu-master-btn')) return;
+      var url = (kintone.app.record.get().record[code] || {}).value;
+      var el = kintone.app.record.getFieldElement(code);
+      if (!url || !el || el.querySelector('.' + marker)) return;
       el.innerHTML = '';
       var btn = document.createElement('button');
       btn.type = 'button';
-      btn.textContent = 'Open in App ' + APP_MASTER;
-      btn.className = 'etp-btn etp-btn-primary ehu-master-btn';
+      btn.textContent = label;
+      btn.className = 'etp-btn etp-btn-primary ' + marker;
       btn.onclick = function () { window.open(url, '_blank', 'noopener'); };
       el.appendChild(btn);
     } catch (e) { /* field not on the form / older UI */ }
+  }
+  // Master Record -> App 23/86; Box -> the shared Box folder (team adds files there).
+  function renderRecordButtons() {
+    renderLinkButton(F.a23link, 'Open in App ' + APP_MASTER, 'ehu-master-btn');
+    renderLinkButton(F.boxLink, 'Open Box folder', 'ehu-box-btn');
   }
 
   /* ============================= PASTE ALLOCATION ============================= */
