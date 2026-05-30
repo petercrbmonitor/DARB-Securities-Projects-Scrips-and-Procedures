@@ -1189,6 +1189,7 @@
     lockSystemFields(event);
     // reflect the table-derived fields on open (heals any drift from the master)
     applyDerived(event.record);
+    renderMasterButton();              // show the App 23 link field as a button
     return event;
   });
 
@@ -1197,6 +1198,7 @@
     hideRowId();
     a106Fields();                  // warm App 106 field map for "Refresh from master"
     releaseIfCancelled(event.record);  // native Cancel lands here - free our lock if so
+    renderMasterButton();              // show the App 23 link field as a button
     if (document.querySelector('.ehu-bar')) return event;
     var sp = kintone.app.record.getHeaderMenuSpaceElement();
     if (!sp) return event;
@@ -1248,6 +1250,22 @@
   // A23 Row ID is an internal pointer (the App 23 subtable row id), not for humans.
   function hideRowId() {
     try { kintone.app.record.setFieldShown(F.t_rowId, false); } catch (e) { /* older UI */ }
+  }
+
+  // Render the Master Record (app23_link) field as a themed button instead of a raw URL.
+  function renderMasterButton() {
+    try {
+      var url = (kintone.app.record.get().record[F.a23link] || {}).value;
+      var el = kintone.app.record.getFieldElement(F.a23link);
+      if (!url || !el || el.querySelector('.ehu-master-btn')) return;
+      el.innerHTML = '';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = 'Open in App ' + APP_MASTER;
+      btn.className = 'etp-btn etp-btn-primary ehu-master-btn';
+      btn.onclick = function () { window.open(url, '_blank', 'noopener'); };
+      el.appendChild(btn);
+    } catch (e) { /* field not on the form / older UI */ }
   }
 
   /* ============================= PASTE ALLOCATION ============================= */
@@ -1305,12 +1323,23 @@
     if (lineHits.length >= 2 && lineHits.length === lines.length) return lineHits;
 
     var delim = raw.indexOf('\t') > -1 ? '\t'
+              : raw.indexOf('|') > -1 ? '|'         // markdown / pipe tables
               : raw.indexOf(';') > -1 ? ';'
               : /[^\d],|,[^\d]/.test(raw) ? ','
               : null;
+    // Split a row by the delimiter; for "|" tables, drop the empty cells the outer pipes
+    // create so column indices line up (e.g. "| a | b |" -> ["a","b"]).
+    var splitRow = function (line) {
+      var p = line.split(delim).map(function (s) { return s.trim(); });
+      if (delim === '|') {
+        while (p.length && p[0] === '') p.shift();
+        while (p.length && p[p.length - 1] === '') p.pop();
+      }
+      return p;
+    };
     var hdr = null;
     if (delim && lines.length >= 2) {
-      var head = lines[0].split(delim).map(function (s) { return s.trim(); });
+      var head = splitRow(lines[0]);
       var looks = head.some(function (h) { return /name|symbol|ticker|weight|ponder|price|reference|index/i.test(h); }) &&
                   !head.some(function (h) { return asNum(h); });
       if (looks) {
@@ -1326,7 +1355,7 @@
     var out = [];
     if (hdr) {
       lines.slice(1).forEach(function (line) {
-        var f = line.split(delim).map(function (s) { return s.trim(); });
+        var f = splitRow(line);
         var w = asNum(f[hdr.wi]);
         if (!w) return;
         var tf = tickFromField(f[hdr.si]);
