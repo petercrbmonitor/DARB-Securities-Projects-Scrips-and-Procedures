@@ -1116,6 +1116,7 @@
       sessionStorage.setItem('ehu-filter', 'updated');
       gotoIndex();
     }));
+    b.appendChild(mkBtn('Guide', function () { openGuideModal(); }));
     sp.appendChild(b);
 
     // Show how many records are currently due for review on the button.
@@ -1313,6 +1314,49 @@
   function buttonizeListButtons() {
     buttonizeListCells(F.a23link, 'Master Profile', 'ehu-master-btn');
     buttonizeListCells(F.boxLink, 'Open Box folder', 'ehu-box-btn');
+  }
+
+  /* ===================== IN-APP GUIDE (edit GUIDE_HTML to tweak) =====================
+   * Opened by the "Guide" toolbar button. This replaces the app-description blurb with a
+   * clear, in-app doc. Edit the HTML below to perfect the instructions. */
+  var GUIDE_HTML =
+    '<h3 class="etp-modal-title">ETP Holdings Update - how it works</h3>' +
+    '<p class="etp-modal-sub">A queue-driven workstation for reviewing and updating the DA ETP Holdings that live in the master ETP app. This app is a work mirror - the master app stays the system of record.</p>' +
+    '<div class="etp-guide" style="max-height:60vh;overflow:auto;font-size:14px;line-height:1.55;color:#0c2b28">' +
+      '<h4>What it references</h4>' +
+      '<ul>' +
+        '<li><b>Master app</b> (ETP profiles) - App 23 live / App 86 test. Read when pulling, written back on Save.</li>' +
+        '<li><b>Reference app</b> (cryptoasset &amp; BCBS) - App 34 live / App 85 test. Read-only; used for BCBS auto-fill and ticker matching.</li>' +
+        '<li><b>Box</b> - the <b>Open Box folder</b> button opens the same Box folder as the master record, for adding files.</li>' +
+      '</ul>' +
+      '<h4>How records get here</h4>' +
+      '<p>A profile is pulled in when it is <b>Active</b> and in an allow-listed <b>Sector</b>. The overview auto-syncs when opened (or use <b>Refresh Queue</b>); profiles that are no longer Active drop out automatically.</p>' +
+      '<h4>How to use it</h4>' +
+      '<ul>' +
+        '<li><b>Add to Queue / Refresh Queue</b> - pull qualifying profiles from the master app.</li>' +
+        '<li><b>Queue Due Reviews (N)</b> - re-pull records whose review is due (N = how many are due now).</li>' +
+        '<li><b>Fetch Record</b> - assigns the next queued record to you and opens it to edit.</li>' +
+        '<li><b>Paste allocation</b> (edit screen) - paste a holdings list; rows are matched to the reference app and added for review, then <b>Save</b>.</li>' +
+        '<li><b>Save</b> - writes the holdings back to the master app and schedules the next review.</li>' +
+        '<li><b>Master Profile / Open Box folder</b> - open the linked master record / Box folder.</li>' +
+      '</ul>' +
+    '</div>';
+
+  function openGuideModal() {
+    if (document.getElementById('etp-guide-ov')) return;
+    var ov = document.createElement('div');
+    ov.id = 'etp-guide-ov';
+    ov.className = 'etp-modal-ov';
+    var box = document.createElement('div');
+    box.className = 'etp-modal';
+    box.style.maxWidth = '720px';
+    box.innerHTML = GUIDE_HTML +
+      '<div class="etp-modal-actions"><button id="etp-guide-close" class="etp-btn etp-btn-primary">Close</button></div>';
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); };
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    box.querySelector('#etp-guide-close').onclick = close;
   }
 
   /* ============================= PASTE ALLOCATION ============================= */
