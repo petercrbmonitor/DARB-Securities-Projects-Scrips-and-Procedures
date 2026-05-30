@@ -115,7 +115,9 @@
     // derived targets (App 23's own automations normally set these in the UI)
     bcbsRollup: 'BCBS_Lowest_Value', // ETP BCBS Group (worst-of rollup)
     updatedBy: 'HoldingsUpdateSummary', // Holdings last updated by (name)
-    updatedAt: 'Date_and_time_1'     // Holding review date and time
+    updatedAt: 'Date_and_time_1',    // Holding review date and time
+    boxName: 'Text_4',               // Box folder name
+    boxRef: 'Text_5'                 // Box folder reference (id or URL) the Box plugin uses
   };
 
   // Reference app (App 85 test / App 34 live) field codes - for BCBS auto-fill.
@@ -129,6 +131,8 @@
   var F = {
     a23id: 'app23_record_id',
     a23link: 'app23_link',
+    boxName: 'box_folder_name',
+    boxLink: 'box_link',
     issuer: 'issuer',
     etpName: 'etp_name',
     identifier: 'identifier',
@@ -603,6 +607,14 @@
     return id ? (location.origin + '/k/' + APP_MASTER + '/show#record=' + encodeURIComponent(id)) : '';
   }
 
+  // Box folder URL from App 23's Text_5 reference: use it directly if it is already a URL,
+  // otherwise treat it as a Box folder id. Empty -> '' (no button shown).
+  function boxUrl(ref) {
+    ref = (ref == null ? '' : String(ref)).trim();
+    if (!ref) return '';
+    return /^https?:\/\//i.test(ref) ? ref : ('https://app.box.com/folder/' + encodeURIComponent(ref));
+  }
+
   // Common master -> this-app field mapping (shared by initial pull and re-pull).
   function mapMasterFields(rec) {
     var r = {};
@@ -612,6 +624,8 @@
     r[F.sector] = { value: valOf(rec, A23.sector) };
     r[F.profileStatus] = { value: valOf(rec, A23.profileStatus) }; // read-only master mirror
     r[F.a23link] = { value: masterUrl(rec.$id && rec.$id.value) };  // click-through to master
+    r[F.boxName] = { value: valOf(rec, A23.boxName) };              // Box folder name (mirror)
+    r[F.boxLink] = { value: boxUrl(valOf(rec, A23.boxRef)) };       // Box folder URL (button)
     PROFILE_FIELDS.forEach(function (m) { r[m.a106] = { value: valOf(rec, m.a23) }; });
     r[F.secTable] = { value: mapSecuritiesIn(rec) };
     r[F.table] = { value: mapHoldingsIn(rec) };
@@ -1083,6 +1097,7 @@
   kintone.events.on('app.record.index.show', function (event) {
     a106Fields();                  // warm App 106 field map for safe mirror writes
     maybeAutoSync();               // throttled full sync on open (Active in / non-Active out)
+    buttonizeListButtons();        // Master Profile + Box links as buttons in the list view
     if (document.querySelector('.ehu-bar')) return event;
     var sp = kintone.app.getHeaderMenuSpaceElement();
     if (!sp) return event;
@@ -1101,6 +1116,7 @@
       sessionStorage.setItem('ehu-filter', 'updated');
       gotoIndex();
     }));
+    b.appendChild(mkBtn('Guide', function () { openGuideModal(); }));
     sp.appendChild(b);
 
     // Show how many records are currently due for review on the button.
@@ -1189,6 +1205,7 @@
     lockSystemFields(event);
     // reflect the table-derived fields on open (heals any drift from the master)
     applyDerived(event.record);
+    renderRecordButtons();             // App 23 + Box link fields as buttons
     return event;
   });
 
@@ -1197,6 +1214,7 @@
     hideRowId();
     a106Fields();                  // warm App 106 field map for "Refresh from master"
     releaseIfCancelled(event.record);  // native Cancel lands here - free our lock if so
+    renderRecordButtons();             // App 23 + Box link fields as buttons
     if (document.querySelector('.ehu-bar')) return event;
     var sp = kintone.app.record.getHeaderMenuSpaceElement();
     if (!sp) return event;
@@ -1227,7 +1245,7 @@
   function lockSystemFields(event) {
     var rec = event.record;
     [F.a23id, F.status, F.assignedTo, F.assignedAt, F.inEdit, F.lastBy, F.lastAt, F.order, F.reviewDue,
-      F.issuer, F.etpName, F.identifier, F.sector, F.profileStatus, F.a23link,
+      F.issuer, F.etpName, F.identifier, F.sector, F.profileStatus, F.a23link, F.boxName, F.boxLink,
       'holdings_last_updated_by_a23', 'etp_bcbs_group', 'holding_review_dt',
       'holds_spot_crypto', 'portfolio_type', 'etp_holdings_type']
       .forEach(function (code) {
@@ -1248,6 +1266,97 @@
   // A23 Row ID is an internal pointer (the App 23 subtable row id), not for humans.
   function hideRowId() {
     try { kintone.app.record.setFieldShown(F.t_rowId, false); } catch (e) { /* older UI */ }
+  }
+
+  // Render a LINK field as a themed button (opens the URL in a new tab) instead of raw text.
+  function renderLinkButton(code, label, marker) {
+    try {
+      var url = (kintone.app.record.get().record[code] || {}).value;
+      var el = kintone.app.record.getFieldElement(code);
+      if (!url || !el || el.querySelector('.' + marker)) return;
+      el.innerHTML = '';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.className = 'etp-btn etp-btn-primary ' + marker;
+      btn.onclick = function () { window.open(url, '_blank', 'noopener'); };
+      el.appendChild(btn);
+    } catch (e) { /* field not on the form / older UI */ }
+  }
+  // Master Record -> App 23/86; Box -> the shared Box folder (team adds files there).
+  function renderRecordButtons() {
+    renderLinkButton(F.a23link, 'Master Profile', 'ehu-master-btn');
+    renderLinkButton(F.boxLink, 'Open Box folder', 'ehu-box-btn');
+  }
+
+  // Turn the LINK cells in the index/list view into compact buttons (one per row).
+  // Requires the field to be a column in the active list view.
+  function buttonizeListCells(code, label, marker) {
+    try {
+      var els = kintone.app.getFieldElements(code) || [];
+      els.forEach(function (el) {
+        if (!el || el.querySelector('.' + marker)) return;
+        var a = el.querySelector('a');
+        var url = a ? (a.href || a.textContent) : '';
+        if (!url || !/^https?:\/\//i.test(url)) return;
+        el.innerHTML = '';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = label;
+        btn.className = 'etp-btn etp-btn-primary ' + marker;
+        btn.style.padding = '4px 12px';
+        btn.style.fontSize = '12px';
+        btn.onclick = function (e) { e.stopPropagation(); window.open(url, '_blank', 'noopener'); };
+        el.appendChild(btn);
+      });
+    } catch (e) { /* field not in this view / older UI */ }
+  }
+  function buttonizeListButtons() {
+    buttonizeListCells(F.a23link, 'Master Profile', 'ehu-master-btn');
+    buttonizeListCells(F.boxLink, 'Open Box folder', 'ehu-box-btn');
+  }
+
+  /* ===================== IN-APP GUIDE (edit GUIDE_HTML to tweak) =====================
+   * Opened by the "Guide" toolbar button. This replaces the app-description blurb with a
+   * clear, in-app doc. Edit the HTML below to perfect the instructions. */
+  var GUIDE_HTML =
+    '<h3 class="etp-modal-title">ETP Holdings Update - how it works</h3>' +
+    '<p class="etp-modal-sub">A queue-driven workstation for reviewing and updating the DA ETP Holdings that live in the master ETP app. This app is a work mirror - the master app stays the system of record.</p>' +
+    '<div class="etp-guide" style="max-height:60vh;overflow:auto;font-size:14px;line-height:1.55;color:#0c2b28">' +
+      '<h4>What it references</h4>' +
+      '<ul>' +
+        '<li><b>Master app</b> (ETP profiles) - App 23 live / App 86 test. Read when pulling, written back on Save.</li>' +
+        '<li><b>Reference app</b> (cryptoasset &amp; BCBS) - App 34 live / App 85 test. Read-only; used for BCBS auto-fill and ticker matching.</li>' +
+        '<li><b>Box</b> - the <b>Open Box folder</b> button opens the same Box folder as the master record, for adding files.</li>' +
+      '</ul>' +
+      '<h4>How records get here</h4>' +
+      '<p>A profile is pulled in when it is <b>Active</b> and in an allow-listed <b>Sector</b>. The overview auto-syncs when opened (or use <b>Refresh Queue</b>); profiles that are no longer Active drop out automatically.</p>' +
+      '<h4>How to use it</h4>' +
+      '<ul>' +
+        '<li><b>Add to Queue / Refresh Queue</b> - pull qualifying profiles from the master app.</li>' +
+        '<li><b>Queue Due Reviews (N)</b> - re-pull records whose review is due (N = how many are due now).</li>' +
+        '<li><b>Fetch Record</b> - assigns the next queued record to you and opens it to edit.</li>' +
+        '<li><b>Paste allocation</b> (edit screen) - paste a holdings list; rows are matched to the reference app and added for review, then <b>Save</b>.</li>' +
+        '<li><b>Save</b> - writes the holdings back to the master app and schedules the next review.</li>' +
+        '<li><b>Master Profile / Open Box folder</b> - open the linked master record / Box folder.</li>' +
+      '</ul>' +
+    '</div>';
+
+  function openGuideModal() {
+    if (document.getElementById('etp-guide-ov')) return;
+    var ov = document.createElement('div');
+    ov.id = 'etp-guide-ov';
+    ov.className = 'etp-modal-ov';
+    var box = document.createElement('div');
+    box.className = 'etp-modal';
+    box.style.maxWidth = '720px';
+    box.innerHTML = GUIDE_HTML +
+      '<div class="etp-modal-actions"><button id="etp-guide-close" class="etp-btn etp-btn-primary">Close</button></div>';
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); };
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    box.querySelector('#etp-guide-close').onclick = close;
   }
 
   /* ============================= PASTE ALLOCATION ============================= */
@@ -1305,12 +1414,23 @@
     if (lineHits.length >= 2 && lineHits.length === lines.length) return lineHits;
 
     var delim = raw.indexOf('\t') > -1 ? '\t'
+              : raw.indexOf('|') > -1 ? '|'         // markdown / pipe tables
               : raw.indexOf(';') > -1 ? ';'
               : /[^\d],|,[^\d]/.test(raw) ? ','
               : null;
+    // Split a row by the delimiter; for "|" tables, drop the empty cells the outer pipes
+    // create so column indices line up (e.g. "| a | b |" -> ["a","b"]).
+    var splitRow = function (line) {
+      var p = line.split(delim).map(function (s) { return s.trim(); });
+      if (delim === '|') {
+        while (p.length && p[0] === '') p.shift();
+        while (p.length && p[p.length - 1] === '') p.pop();
+      }
+      return p;
+    };
     var hdr = null;
     if (delim && lines.length >= 2) {
-      var head = lines[0].split(delim).map(function (s) { return s.trim(); });
+      var head = splitRow(lines[0]);
       var looks = head.some(function (h) { return /name|symbol|ticker|weight|ponder|price|reference|index/i.test(h); }) &&
                   !head.some(function (h) { return asNum(h); });
       if (looks) {
@@ -1326,7 +1446,7 @@
     var out = [];
     if (hdr) {
       lines.slice(1).forEach(function (line) {
-        var f = line.split(delim).map(function (s) { return s.trim(); });
+        var f = splitRow(line);
         var w = asNum(f[hdr.wi]);
         if (!w) return;
         var tf = tickFromField(f[hdr.si]);
