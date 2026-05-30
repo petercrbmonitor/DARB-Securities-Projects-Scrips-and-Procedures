@@ -1558,7 +1558,7 @@
       '<div class="etp-ai-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">' +
         '<button id="etp-ai-attach" class="etp-btn etp-btn-ghost" type="button">Attach image</button>' +
         '<span id="etp-ai-imgname" style="font-size:.8rem;color:var(--etp-muted)"></span>' +
-        '<button id="etp-ai-run" class="etp-btn etp-btn-primary" type="button">Extract with AI</button>' +
+        '<button id="etp-ai-run" class="etp-btn etp-btn-primary" type="button">Extract Holdings</button>' +
         '<span id="etp-ai-status" style="font-size:.8rem;color:var(--etp-muted)"></span>' +
         '<input id="etp-ai-file" type="file" accept="image/*" style="display:none"/>' +
       '</div>' +
@@ -1615,7 +1615,7 @@
       if (!aiGetKey()) { keyRow.style.display = 'flex'; setAiStatus('Paste your Gemini key, then Save key.'); return; }
       var srcText = box.querySelector('#etp-paste-text').value.trim();
       if (!srcText && !aiImage) { setAiStatus('Paste text or attach a screenshot first.'); return; }
-      setAiStatus('Extracting with AI...');
+      setAiStatus('Extracting holdings...');
       aiExtractHoldings(srcText, aiImage).then(function (out) {
         if (!out) { setAiStatus('No holdings returned - try a clearer screenshot.'); return; }
         box.querySelector('#etp-paste-text').value = out;
