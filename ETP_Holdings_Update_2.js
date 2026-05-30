@@ -1097,6 +1097,7 @@
   kintone.events.on('app.record.index.show', function (event) {
     a106Fields();                  // warm App 106 field map for safe mirror writes
     maybeAutoSync();               // throttled full sync on open (Active in / non-Active out)
+    buttonizeListButtons();        // Master Profile + Box links as buttons in the list view
     if (document.querySelector('.ehu-bar')) return event;
     var sp = kintone.app.getHeaderMenuSpaceElement();
     if (!sp) return event;
@@ -1283,8 +1284,35 @@
   }
   // Master Record -> App 23/86; Box -> the shared Box folder (team adds files there).
   function renderRecordButtons() {
-    renderLinkButton(F.a23link, 'Open in App ' + APP_MASTER, 'ehu-master-btn');
+    renderLinkButton(F.a23link, 'Master Profile', 'ehu-master-btn');
     renderLinkButton(F.boxLink, 'Open Box folder', 'ehu-box-btn');
+  }
+
+  // Turn the LINK cells in the index/list view into compact buttons (one per row).
+  // Requires the field to be a column in the active list view.
+  function buttonizeListCells(code, label, marker) {
+    try {
+      var els = kintone.app.getFieldElements(code) || [];
+      els.forEach(function (el) {
+        if (!el || el.querySelector('.' + marker)) return;
+        var a = el.querySelector('a');
+        var url = a ? (a.href || a.textContent) : '';
+        if (!url || !/^https?:\/\//i.test(url)) return;
+        el.innerHTML = '';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = label;
+        btn.className = 'etp-btn etp-btn-primary ' + marker;
+        btn.style.padding = '4px 12px';
+        btn.style.fontSize = '12px';
+        btn.onclick = function (e) { e.stopPropagation(); window.open(url, '_blank', 'noopener'); };
+        el.appendChild(btn);
+      });
+    } catch (e) { /* field not in this view / older UI */ }
+  }
+  function buttonizeListButtons() {
+    buttonizeListCells(F.a23link, 'Master Profile', 'ehu-master-btn');
+    buttonizeListCells(F.boxLink, 'Open Box folder', 'ehu-box-btn');
   }
 
   /* ============================= PASTE ALLOCATION ============================= */
