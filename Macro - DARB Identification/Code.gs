@@ -1283,12 +1283,41 @@ function fuzzyConfirm_(candNorm, entries) {
   return null;
 }
 
+/* ===================== CONCURRENCY - DOCUMENT LOCK ================================== */
+
+/* The routing / move / distribute actions append to shared tabs (Watchlist, Adds,
+ * FR / Confirmed Exclude, In DB Log) one row at a time, and the duplicate guard
+ * (findExistingRow_ then appendRow) is a check-then-act. Two interns running Clean-up at
+ * the same time could interleave those appends and double-create a row. withDocLock_
+ * serialises these entry points on a document-wide lock. The _holdingDocLock flag
+ * (module-level, reset each execution) keeps it reentrant-safe should one wrapped action
+ * ever call another within the same run. If the lock cannot be taken in 20s the action is
+ * a no-op and the operator is asked to retry - nothing is half-written. */
+var _holdingDocLock = false;
+function withDocLock_(fn) {
+  if (_holdingDocLock) return fn();
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(20000)) {
+    toast_('Another DARB action is running - please retry in a moment.');
+    return;
+  }
+  _holdingDocLock = true;
+  try { return fn(); } finally { _holdingDocLock = false; lock.releaseLock(); }
+}
+
+/* Public entry points (menu / on-sheet buttons) -> locked wrappers around the _impl_ body. */
+function distributeSelected() { return withDocLock_(distributeSelected_impl_); }
+function cleanupActiveTab()   { return withDocLock_(cleanupActiveTab_impl_); }
+function processReviews()     { return withDocLock_(processReviews_impl_); }
+function consolidateToSort()  { return withDocLock_(consolidateToSort_impl_); }
+function moveSelected()       { return withDocLock_(moveSelected_impl_); }
+
 /* ===================== STEP 3 - DISTRIBUTE, REVIEW & ROUTE ========================== */
 
 /** Move checked Sort rows to the chosen intern tab. Stamps Date Assigned + Due Date.
  *  Sort row: 0 Company | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst | 5 Analyst Note |
  *            6 Tier | 7 Sector | 8 Source | 9 Note | 10 Select | 11 Assign To           */
-function distributeSelected() {
+function distributeSelected_impl_() {
   scaffoldAll_();
   var ss = SpreadsheetApp.getActive();
   var sortSh = ss.getSheetByName(TABS.sort.name);
@@ -1337,7 +1366,7 @@ function distributeSelected() {
 }
 
 /** Clean-up button: route reviewed rows on the intern tab currently open. */
-function cleanupActiveTab() {
+function cleanupActiveTab_impl_() {
   scaffoldAll_();
   var sh = SpreadsheetApp.getActiveSheet();
   var name = sh.getName();
@@ -1364,7 +1393,7 @@ function cleanupActiveTab() {
 }
 
 /** Backstop: sweep ALL intern tabs and route eligible rows. */
-function processReviews() {
+function processReviews_impl_() {
   scaffoldAll_();
   var counts = { 'Add': 0, 'Watchlist': 0, 'FR Exclude': 0, 'Confirmed Exclude': 0, 'In DB': 0 };
   var skipped = 0;
@@ -1539,7 +1568,7 @@ function withPrefix_(text, prefix) {
  * in the Note column; the source tabs are then cleared. (Excluded stays manual - those are
  * confirmed already-tracked, so use per-row Move To if any need to go to interns.)
  */
-function consolidateToSort() {
+function consolidateToSort_impl_() {
   var ss = SpreadsheetApp.getActive();
   var names = ['Review', 'Attention - DB Drift'];
   var today = new Date();
@@ -1585,7 +1614,7 @@ function consolidateToSort() {
  *   Remove              -> deletes from the source only (no destination).
  * Does NOT scaffold first, so it never clears the ticks you just set.
  */
-function moveSelected() {
+function moveSelected_impl_() {
   var ss = SpreadsheetApp.getActive();
   var sh = ss.getActiveSheet();
   var name = sh.getName();
