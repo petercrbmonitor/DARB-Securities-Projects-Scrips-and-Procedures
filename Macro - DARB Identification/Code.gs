@@ -700,10 +700,53 @@ function readXlsxValues_(bytes, name) {
   }
 }
 
+/* AlphaSense Search Summary header aliases, resolved by name so a column reorder or a
+ * change in the metadata-block height does not silently drop rows or disable ISIN
+ * matching. If no header row is found we fall back to the historical layout (data from
+ * row 10, fixed column positions). */
+var RAW_ALIASES = {
+  company: ['company', 'company name', 'name', 'primary business name',
+    'company name (alphasense)', 'issuer name', 'issuer'],
+  ticker: ['ticker', 'alphasense ticker', 'symbol', 'sentieo ticker', 'primary symbol'],
+  cik: ['cik'],
+  isin: ['isin'],
+  mcap: ['mcap', 'mcap ($)', 'market cap', 'market cap ($)', 'market capitalization',
+    'market capitalisation', 'mkt cap'],
+  region: ['region'],
+  domicile: ['domicile', 'domicile country', 'country', 'country of domicile']
+};
+var RAW_LEGACY_COLS = { company: 0, ticker: 1, cik: 2, isin: 3, mcap: 5, region: 7, domicile: 8 };
+var RAW_HEADER_SCAN = 20; // rows to scan for the header before falling back to legacy
+
+/** Find the header row in a RAW grid: the first row (within RAW_HEADER_SCAN) that resolves
+ *  both a company and a ticker column by name. Returns {row, idx} or null. */
+function findRawHeaderRow_(grid) {
+  var scan = Math.min(RAW_HEADER_SCAN, grid.length);
+  for (var i = 0; i < scan; i++) {
+    var pos = {};
+    grid[i].forEach(function (h, c) {
+      var key = String(h || '').toLowerCase().trim();
+      if (!key) return;
+      Object.keys(RAW_ALIASES).forEach(function (field) {
+        if (pos[field] === undefined && RAW_ALIASES[field].indexOf(key) >= 0) pos[field] = c;
+      });
+    });
+    if (pos.company !== undefined && pos.ticker !== undefined) return { row: i, idx: pos };
+  }
+  return null;
+}
+
+/** Read a field from a RAW row by the resolved column map (blank if unmapped / out of range). */
+function rawCell_(r, col, field) {
+  var c = col[field];
+  return (c === undefined || c < 0 || c >= r.length) ? '' : r[c];
+}
+
 /**
- * Stack data rows (row 10 down) from every RAW tab.
- * Keep: real ticker (not blank, not "-") AND MCAP not PRIVATE / ACQUIRED.
- * Dedupe ticker-first (normalized ticker), Company as tiebreak.
+ * Stack data rows from every RAW tab. The header row is detected by column name
+ * (RAW_ALIASES); if none is found we fall back to the historical layout (data from
+ * row 10, fixed column positions). Keep: real ticker (not blank, not "-") AND MCAP not
+ * PRIVATE / ACQUIRED. Dedupe ticker-first (normalized ticker), Company as tiebreak.
  */
 function buildCleanPull() {
   var ss = SpreadsheetApp.getActive();
@@ -712,19 +755,26 @@ function buildCleanPull() {
   });
   if (!rawSheets.length) { toast_('No RAW tabs found - run Import CSVs first.'); return; }
 
-  var byKey = {}, order = [];
+  var byKey = {}, order = [], legacyTabs = 0;
   rawSheets.forEach(function (sh) {
     var lr = sh.getLastRow();
-    if (lr < 10) return;
-    var vals = sh.getRange(10, 1, lr - 9, 11).getValues();
-    vals.forEach(function (r) {
-      var company = String(r[0] || '').trim();
-      var ticker = String(r[1] || '').trim();
-      var mcap = String(r[5] || '').trim().toUpperCase();
-      if (!company && !ticker) return;
-      if (!ticker || ticker === '-') return;
-      if (mcap === 'PRIVATE' || mcap === 'ACQUIRED') return;
-      var out = [company, ticker, r[2], r[3], r[5], r[7], r[8]];
+    if (lr < 2) return;
+    var lc = Math.max(sh.getLastColumn(), 11);
+    var grid = sh.getRange(1, 1, lr, lc).getValues();
+    var hdr = findRawHeaderRow_(grid);
+    var startRow, col;
+    if (hdr) { startRow = hdr.row + 1; col = hdr.idx; }
+    else { startRow = 9; col = RAW_LEGACY_COLS; legacyTabs++; }   // legacy: data begins on row 10
+    for (var i = startRow; i < grid.length; i++) {
+      var r = grid[i];
+      var company = String(rawCell_(r, col, 'company') || '').trim();
+      var ticker = String(rawCell_(r, col, 'ticker') || '').trim();
+      var mcap = String(rawCell_(r, col, 'mcap') || '').trim().toUpperCase();
+      if (!company && !ticker) continue;
+      if (!ticker || ticker === '-') continue;
+      if (mcap === 'PRIVATE' || mcap === 'ACQUIRED') continue;
+      var out = [company, ticker, rawCell_(r, col, 'cik'), rawCell_(r, col, 'isin'),
+        rawCell_(r, col, 'mcap'), rawCell_(r, col, 'region'), rawCell_(r, col, 'domicile')];
       var key = normTicker_(ticker);
       if (!(key in byKey)) {
         byKey[key] = out;
@@ -732,7 +782,7 @@ function buildCleanPull() {
       } else if (String(out[0]).toLowerCase() < String(byKey[key][0]).toLowerCase()) {
         byKey[key] = out; // company tiebreak
       }
-    });
+    }
   });
 
   var rows = order.map(function (k) { return byKey[k]; });
@@ -741,7 +791,8 @@ function buildCleanPull() {
   if (rows.length) sh.getRange(2, 1, rows.length, 7).setValues(rows);
   applyFormat_(sh, 7);
   logHistory_('Build Clean Pull', rawSheets.length + ' RAW tab(s)',
-    rows.length + ' rows after clean + dedupe');
+    rows.length + ' rows after clean + dedupe' +
+    (legacyTabs ? ' - ' + legacyTabs + ' tab(s) used the legacy row-10 fallback (no header row detected)' : ''));
   toast_('Clean Pull rebuilt: ' + rows.length + ' rows.');
 }
 
@@ -1736,9 +1787,33 @@ function buildKintoneUpload() {
   var adds = ss.getSheetByName(TABS.adds.name);
   var lr = adds.getLastRow();
   if (lr < 2) { toast_('Adds tab is empty - nothing to format.'); return; }
-  var width = TABS.adds.header.length; // 21
+  var width = TABS.adds.header.length; // 22
   var vals = adds.getRange(2, 1, lr - 1, width).getValues();
   var anySel = vals.some(function (r) { return r[20] === true; });
+
+  // Build-time validation: a blank ticker breaks the Source Docs key-match (Primary
+  // Business Name + AlphaSense Ticker) and a blank Profile Status imports an empty
+  // picklist value. Warn - with the offending names - before writing the output tabs.
+  var problems = [];
+  vals.forEach(function (r) {
+    var imported = r[0] === true, sel = r[20] === true;
+    if (anySel ? !sel : imported) return;            // same qualifying set as the build loop below
+    var nm = String(r[3] || '').trim();
+    if (!nm) return;
+    var issues = [];
+    if (!String(r[4] || '').trim()) issues.push('blank ticker');
+    if (!String(r[19] || '').trim()) issues.push('blank Profile Status');
+    if (issues.length) problems.push(nm + ' (' + issues.join(', ') + ')');
+  });
+  if (problems.length) {
+    var ui = SpreadsheetApp.getUi();
+    var resp = ui.alert('Kintone Upload - check these rows',
+      problems.length + ' qualifying Add row(s) have issues that affect the Kintone import:\n\n' +
+      problems.slice(0, 20).join('\n') + (problems.length > 20 ? '\n...' : '') +
+      '\n\nBlank ticker breaks the Source Documents key-match; blank Profile Status imports ' +
+      'an empty value.\n\nBuild anyway?', ui.ButtonSet.YES_NO);
+    if (resp !== ui.Button.YES) { toast_('Kintone build cancelled - fix the flagged rows.'); return; }
+  }
 
   var profileRows = [], sdRows = [], profiles = 0, sdCount = 0;
   vals.forEach(function (r) {
