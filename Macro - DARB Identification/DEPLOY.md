@@ -1,85 +1,92 @@
 # Auto-deploy: GitHub -> Google Apps Script
 
-This wires the repo so that any change to `Macro - DARB Identification/Code.gs`
-(or `appsscript.json`) on the **master** branch is pushed to the bound Google
-Apps Script project automatically, using [`clasp`](https://github.com/google/clasp)
-in GitHub Actions. You can also trigger it manually from the **Actions** tab.
+Pushes the DARB pipeline (`Macro - DARB Identification/Code.gs` + its manifest)
+to Google Apps Script via [`clasp`](https://github.com/google/clasp) in GitHub
+Actions. Two environments, selected by branch.
 
-Workflow file: `.github/workflows/deploy-apps-script.yml`.
+Workflow: `.github/workflows/deploy-apps-script.yml`.
+
+## Branch model
+
+| Branch       | Role            | Deploys to                              |
+|--------------|-----------------|-----------------------------------------|
+| `main`       | test / staging  | the **staging** script (`SCRIPT_ID_STAGING`) |
+| `production` | release         | the **live** workbook (`SCRIPT_ID`)     |
+
+Day to day: land changes on `main`, let them deploy to staging and be checked,
+then **promote to production** by merging `main` into `production` (a PR is the
+tidy way). Merging into `production` triggers the live deploy.
+
+Until a `SCRIPT_ID_STAGING` secret is set, pushes to `main` simply skip the
+deploy step (the syntax check still runs), so the test branch never touches
+production.
 
 ## How it works
 
-1. A push to `master` that touches the script (or a manual **Run workflow**)
-   starts the job.
-2. The job runs `node --check` on the script as a gate.
-3. It writes your clasp credentials and a `.clasp.json` (built from the
-   `SCRIPT_ID` secret), then runs `clasp push -f` from the
-   `Macro - DARB Identification` folder.
-4. A committed `.claspignore` ensures **only** `Code.gs` and `appsscript.json`
-   are pushed - the docs in the folder are never sent to Apps Script.
+1. A push to `main` or `production` (or a manual **Run workflow**) starts the job.
+2. `node --check` runs as a gate.
+3. The job picks the Script ID from the branch (`production` -> `SCRIPT_ID`,
+   anything else -> `SCRIPT_ID_STAGING`), writes the clasp credentials and a
+   `.clasp.json`, then runs `clasp push -f` from the `Macro - DARB Identification`
+   folder. A committed `.claspignore` means only `Code.gs` + `appsscript.json`
+   are pushed.
 
-> Apps Script stores `Code.gs` and `Code.js` identically (both are server-side
-> JavaScript), so keeping the file as `Code.gs` is fine for clasp.
+> Apps Script stores `Code.gs` and `Code.js` identically, so keeping the file as
+> `Code.gs` is fine for clasp.
 
 ## One-time setup
 
-You need two repository secrets. **Important:** the deploy target is identified
-by the **Script ID**, which is *not* the spreadsheet ID in the sheet URL
+You need these repository secrets. **Important:** the deploy target is the
+**Script ID**, which is *not* the spreadsheet ID in the sheet URL
 (`.../spreadsheets/d/<SPREADSHEET_ID>/edit`). They are different IDs.
 
-### 1. Get the Script ID
+| Secret              | Required | Value                                                       |
+|---------------------|----------|-------------------------------------------------------------|
+| `CLASPRC_JSON`      | yes      | full contents of `~/.clasprc.json` after `clasp login`      |
+| `SCRIPT_ID`         | yes      | Script ID of the **production** workbook                    |
+| `SCRIPT_ID_STAGING` | optional | Script ID of a **separate staging** workbook                |
 
-1. Open the workbook:
-   <https://docs.google.com/spreadsheets/d/1GnzSm72BQAqF62XbcYM-7Xs_yYQZuw0Nk4qHv6zNjAE/edit>
-2. **Extensions > Apps Script**.
-3. In the script editor: **Project Settings** (the gear icon) > **IDs**.
-4. Copy the **Script ID** (a long string, ~57 characters).
+### Get a Script ID
 
-### 2. Enable the Apps Script API for the deploying account
+1. Open the workbook > **Extensions > Apps Script**.
+2. **Project Settings** (gear) > **IDs** > copy the **Script ID** (~57 chars).
 
-Visit <https://script.google.com/home/usersettings> and turn the
-**Google Apps Script API** ON. `clasp push` fails without this.
+### Enable the Apps Script API (one-time, for the deploying account)
 
-### 3. Generate clasp credentials
+<https://script.google.com/home/usersettings> > turn **Google Apps Script API**
+ON. `clasp push` fails without this.
 
-On your own machine, with the Google account that owns (or can edit) the
-workbook:
+### Generate clasp credentials
 
 ```bash
 npm install -g @google/clasp@2.4.2
-clasp login          # opens a browser; authorize the workbook's account
-cat ~/.clasprc.json  # copy the ENTIRE JSON output
+clasp login            # authorize the workbook's Google account
+# Windows:  type %USERPROFILE%\.clasprc.json
+# macOS/Linux: cat ~/.clasprc.json
 ```
 
-`~/.clasprc.json` contains a long-lived refresh token. Treat it like a
-password - it is only ever stored as a GitHub **secret**, never committed.
+Copy the entire JSON into the `CLASPRC_JSON` secret. It holds a long-lived
+refresh token - treat it like a password; only ever store it as a secret.
 
-### 4. Add the two repository secrets
+### Add the secrets
 
-In GitHub: **Settings > Secrets and variables > Actions > New repository secret**.
+GitHub > **Settings > Secrets and variables > Actions > New repository secret**.
 
-| Secret name    | Value                                                        |
-|----------------|-------------------------------------------------------------|
-| `SCRIPT_ID`    | the Script ID from step 1                                    |
-| `CLASPRC_JSON` | the full contents of `~/.clasprc.json` from step 3          |
+## Setting up a staging workbook (to make `main` deploy somewhere)
 
-That is all - the next push to `master` that changes the script deploys it. To
-deploy immediately without a code change, use **Actions > Deploy Apps Script >
-Run workflow**.
+1. Make a copy of the production workbook (File > Make a copy) - this is staging.
+2. In the copy: **Extensions > Apps Script > Project Settings > IDs** > copy its
+   Script ID.
+3. Add it as the `SCRIPT_ID_STAGING` secret.
 
-## Important: this deploys to the live workbook
-
-This pipeline pushes straight to the bound (production) script. The engineering
-handoff recommends auto-deploying to a **separate staging** workbook/Script ID
-and only promoting to production deliberately. To do that, create a staging copy
-of the workbook, use its Script ID as the secret, and keep the syntax gate in
-place. Switching the target later is just changing the `SCRIPT_ID` secret.
+Now `main` deploys to staging and `production` to live, from the same
+credentials.
 
 ## Deploying manually from your machine (optional)
 
 ```bash
 cd "Macro - DARB Identification"
-cp .clasp.json.example .clasp.json     # then paste your Script ID into it
+cp .clasp.json.example .clasp.json     # paste the target Script ID into it
 clasp push                             # .claspignore limits this to Code.gs + appsscript.json
 ```
 
@@ -87,14 +94,11 @@ clasp push                             # .claspignore limits this to Code.gs + a
 
 ## Troubleshooting
 
-- **`User has not enabled the Apps Script API`** - do step 2.
-- **`Could not read API credentials`** - `CLASPRC_JSON` is empty or malformed;
-  re-copy the full file contents from step 3.
-- **`Script ID ... not found` / 404** - wrong ID (you likely used the
-  spreadsheet ID); re-copy from Project Settings > IDs.
-- **Nothing happened on push** - confirm you pushed to `master` and that the
-  change touched `Code.gs`, `appsscript.json`, or the workflow file, or use
-  **Run workflow** to dispatch manually.
-- **Token stopped working after a while** - the refresh token can be revoked by
-  a Google password change or security review; re-run `clasp login` and update
-  the `CLASPRC_JSON` secret.
+- **`User has not enabled the Apps Script API`** - enable it (above).
+- **`Could not read API credentials`** - `CLASPRC_JSON` is empty/malformed; re-copy.
+- **`Script ID ... not found` / 404** - wrong ID (likely the spreadsheet ID);
+  re-copy from Project Settings > IDs.
+- **`main` push didn't deploy** - expected until `SCRIPT_ID_STAGING` is set; the
+  run logs a warning and the syntax gate still runs.
+- **Token stopped working** - a Google password change/security review can revoke
+  the refresh token; re-run `clasp login` and update `CLASPRC_JSON`.

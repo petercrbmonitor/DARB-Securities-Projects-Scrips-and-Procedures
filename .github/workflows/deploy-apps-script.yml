@@ -1,32 +1,29 @@
 name: Deploy Apps Script
 
-# Pushes the DARB pipeline ("Macro - DARB Identification/Code.gs") to the bound
-# Google Apps Script project via clasp whenever the script or its manifest
-# changes on the default branch (master). Manual runs are available from the
-# Actions tab via "Run workflow".
+# Two-tier deploy via clasp:
+#   push to `main`        -> STAGING / test script   (secret: SCRIPT_ID_STAGING)
+#   push to `production`  -> PRODUCTION live script   (secret: SCRIPT_ID)
+# Plus manual runs from the Actions tab ("Run workflow") - the target is chosen
+# by the branch you run it from. A `node --check` gate runs before any push.
 #
-# Required repository secrets
-#   (Settings > Secrets and variables > Actions > New repository secret):
-#     CLASPRC_JSON  full contents of your local ~/.clasprc.json after `clasp login`
-#     SCRIPT_ID     the bound script's Script ID
-#                   (Extensions > Apps Script > Project Settings > IDs).
-#                   NOTE: this is NOT the spreadsheet ID from the sheet URL.
-#
-# One-time setup and how to obtain both values: see
-# "Macro - DARB Identification/DEPLOY.md".
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   CLASPRC_JSON       full contents of ~/.clasprc.json after `clasp login`
+#   SCRIPT_ID          Script ID of the PRODUCTION workbook
+#                      (Extensions > Apps Script > Project Settings > IDs).
+#                      NOTE: this is NOT the spreadsheet ID from the sheet URL.
+#   SCRIPT_ID_STAGING  Script ID of a separate STAGING workbook (optional).
+#                      Until it is set, pushes to `main` skip the deploy (the
+#                      syntax gate still runs), so the test branch never touches
+#                      production.
+# Full setup: "Macro - DARB Identification/DEPLOY.md".
 
 on:
   push:
-    branches: [ master ]
-    paths:
-      - 'Macro - DARB Identification/Code.gs'
-      - 'Macro - DARB Identification/appsscript.json'
-      - 'Macro - DARB Identification/.claspignore'
-      - '.github/workflows/deploy-apps-script.yml'
+    branches: [ main, production ]
   workflow_dispatch:
 
 concurrency:
-  group: apps-script-deploy
+  group: apps-script-deploy-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -50,21 +47,33 @@ jobs:
           node --check /tmp/Code_check.js
           echo "Syntax OK"
 
-      - name: Write clasp credentials and project config
+      - name: Deploy to the branch's environment
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
-          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+          SCRIPT_ID_PROD: ${{ secrets.SCRIPT_ID }}
+          SCRIPT_ID_STAGING: ${{ secrets.SCRIPT_ID_STAGING }}
+          REF: ${{ github.ref_name }}
         run: |
-          if [ -z "$CLASPRC_JSON" ] || [ -z "$SCRIPT_ID" ]; then
-            echo "::error::Missing CLASPRC_JSON and/or SCRIPT_ID repository secrets. See 'Macro - DARB Identification/DEPLOY.md'."
+          set -e
+          if [ "$REF" = "production" ]; then
+            if [ -z "$SCRIPT_ID_PROD" ]; then
+              echo "::error::Missing SCRIPT_ID secret for production. See Macro - DARB Identification/DEPLOY.md"
+              exit 1
+            fi
+            TARGET_ID="$SCRIPT_ID_PROD"; ENVN="production"
+          else
+            if [ -z "$SCRIPT_ID_STAGING" ]; then
+              echo "::warning::No SCRIPT_ID_STAGING secret set - skipping staging deploy for branch '$REF'. The syntax check still ran. Add a staging workbook's Script ID as SCRIPT_ID_STAGING to enable test deploys."
+              exit 0
+            fi
+            TARGET_ID="$SCRIPT_ID_STAGING"; ENVN="staging"
+          fi
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::Missing CLASPRC_JSON secret. See Macro - DARB Identification/DEPLOY.md"
             exit 1
           fi
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
-          printf '{"scriptId":"%s","rootDir":"."}\n' "$SCRIPT_ID" > "Macro - DARB Identification/.clasp.json"
-
-      - name: Push to Apps Script
-        working-directory: "Macro - DARB Identification"
-        run: clasp push -f
-
-      - name: Result
-        run: echo "Deployed Code.gs to the bound Apps Script project."
+          printf '{"scriptId":"%s","rootDir":"."}\n' "$TARGET_ID" > "Macro - DARB Identification/.clasp.json"
+          cd "Macro - DARB Identification"
+          clasp push -f
+          echo "Deployed to $ENVN (branch $REF)."
