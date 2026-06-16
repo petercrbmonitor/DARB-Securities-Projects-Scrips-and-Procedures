@@ -1736,9 +1736,33 @@ function buildKintoneUpload() {
   var adds = ss.getSheetByName(TABS.adds.name);
   var lr = adds.getLastRow();
   if (lr < 2) { toast_('Adds tab is empty - nothing to format.'); return; }
-  var width = TABS.adds.header.length; // 21
+  var width = TABS.adds.header.length; // 22
   var vals = adds.getRange(2, 1, lr - 1, width).getValues();
   var anySel = vals.some(function (r) { return r[20] === true; });
+
+  // Build-time validation: a blank ticker breaks the Source Docs key-match (Primary
+  // Business Name + AlphaSense Ticker) and a blank Profile Status imports an empty
+  // picklist value. Warn - with the offending names - before writing the output tabs.
+  var problems = [];
+  vals.forEach(function (r) {
+    var imported = r[0] === true, sel = r[20] === true;
+    if (anySel ? !sel : imported) return;            // same qualifying set as the build loop below
+    var nm = String(r[3] || '').trim();
+    if (!nm) return;
+    var issues = [];
+    if (!String(r[4] || '').trim()) issues.push('blank ticker');
+    if (!String(r[19] || '').trim()) issues.push('blank Profile Status');
+    if (issues.length) problems.push(nm + ' (' + issues.join(', ') + ')');
+  });
+  if (problems.length) {
+    var ui = SpreadsheetApp.getUi();
+    var resp = ui.alert('Kintone Upload - check these rows',
+      problems.length + ' qualifying Add row(s) have issues that affect the Kintone import:\n\n' +
+      problems.slice(0, 20).join('\n') + (problems.length > 20 ? '\n...' : '') +
+      '\n\nBlank ticker breaks the Source Documents key-match; blank Profile Status imports ' +
+      'an empty value.\n\nBuild anyway?', ui.ButtonSet.YES_NO);
+    if (resp !== ui.Button.YES) { toast_('Kintone build cancelled - fix the flagged rows.'); return; }
+  }
 
   var profileRows = [], sdRows = [], profiles = 0, sdCount = 0;
   vals.forEach(function (r) {
