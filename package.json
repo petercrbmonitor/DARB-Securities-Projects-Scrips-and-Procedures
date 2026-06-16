@@ -1,0 +1,11 @@
+{
+  "name": "darb-securities-pipeline",
+  "private": true,
+  "version": "1.0.0",
+  "description": "DARB Securities new-securities sort pipeline (Google Apps Script) with GitHub auto-deploy via clasp.",
+  "scripts": {
+    "check": "node -e \"require('fs').copyFileSync('Macro - DARB Identification/Code.gs','/tmp/darb_check.js')\" && node --check /tmp/darb_check.js && echo \"Syntax OK\"",
+    "deploy": "cd \"Macro - DARB Identification\" && clasp push -f"
+  },
+  "devDependencies": {}
+}

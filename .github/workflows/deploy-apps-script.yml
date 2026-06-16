@@ -1,0 +1,70 @@
+name: Deploy Apps Script
+
+# Pushes the DARB pipeline ("Macro - DARB Identification/Code.gs") to the bound
+# Google Apps Script project via clasp whenever the script or its manifest
+# changes on the default branch (master). Manual runs are available from the
+# Actions tab via "Run workflow".
+#
+# Required repository secrets
+#   (Settings > Secrets and variables > Actions > New repository secret):
+#     CLASPRC_JSON  full contents of your local ~/.clasprc.json after `clasp login`
+#     SCRIPT_ID     the bound script's Script ID
+#                   (Extensions > Apps Script > Project Settings > IDs).
+#                   NOTE: this is NOT the spreadsheet ID from the sheet URL.
+#
+# One-time setup and how to obtain both values: see
+# "Macro - DARB Identification/DEPLOY.md".
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'Macro - DARB Identification/Code.gs'
+      - 'Macro - DARB Identification/appsscript.json'
+      - 'Macro - DARB Identification/.claspignore'
+      - '.github/workflows/deploy-apps-script.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: apps-script-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp@2.4.2
+
+      - name: Syntax check (gate before deploy)
+        run: |
+          cp "Macro - DARB Identification/Code.gs" /tmp/Code_check.js
+          node --check /tmp/Code_check.js
+          echo "Syntax OK"
+
+      - name: Write clasp credentials and project config
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ] || [ -z "$SCRIPT_ID" ]; then
+            echo "::error::Missing CLASPRC_JSON and/or SCRIPT_ID repository secrets. See 'Macro - DARB Identification/DEPLOY.md'."
+            exit 1
+          fi
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          printf '{"scriptId":"%s","rootDir":"."}\n' "$SCRIPT_ID" > "Macro - DARB Identification/.clasp.json"
+
+      - name: Push to Apps Script
+        working-directory: "Macro - DARB Identification"
+        run: clasp push -f
+
+      - name: Result
+        run: echo "Deployed Code.gs to the bound Apps Script project."

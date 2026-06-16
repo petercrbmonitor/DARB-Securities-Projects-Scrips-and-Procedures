@@ -1,0 +1,12 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# clasp - never commit auth or the real project config (scriptId is environment-specific)
+.clasprc.json
+.clasp.json
+**/.clasp.json
+
+# Local / build artifacts
+build/
+.DS_Store

@@ -1,0 +1,22 @@
+name: CI
+
+# Lightweight guard: confirm Code.gs parses before it can be merged or deployed.
+# Apps Script cannot run in Node, so this is a syntax gate; a unit-test job for
+# the pure helpers (see Macro - DARB Identification/CODE_AUDIT.md, finding 6) is
+# the recommended next addition.
+
+on: [push, pull_request]
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check Code.gs
+        run: |
+          cp "Macro - DARB Identification/Code.gs" /tmp/Code_check.js
+          node --check /tmp/Code_check.js
+          echo "Syntax OK"
