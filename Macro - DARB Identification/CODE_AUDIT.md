@@ -37,13 +37,30 @@ adds specifics.
   `Recomended Sector`, `If Add Recomended Tier` are Kintone integration
   contracts and are correctly left untouched.
 
+## Implementation status (branch `main`)
+
+Resolved on the test branch:
+
+- **#1 LockService** - `withDocLock_` now serialises the routing / move / distribute
+  entry points (`distributeSelected`, `cleanupActiveTab`, `processReviews`,
+  `consolidateToSort`, `moveSelected`).
+- **#2 Build-time validation** - `buildKintoneUpload` warns (YES/NO) on qualifying Adds
+  rows with a blank ticker or blank Profile Status before writing.
+- **#3 RAW header detection** - `buildCleanPull` resolves columns by header name
+  (`RAW_ALIASES` + `findRawHeaderRow_`) and only falls back to the legacy row-10 layout
+  when no header is found.
+- **#8 Stale comment** - the `// 21` Adds-width comment is corrected to `// 22`.
+
+Still open: #4 (batch writes), #5 (ticker canonicalization), #6 (unit tests),
+#7 (Watchlist append width), #9-#11. None block production.
+
 ## Findings
 
-| # | Severity | Area | Item |
+| # | Severity | Area | Status / Item |
 |---|----------|------|------|
-| 1 | High | Concurrency | No `LockService` around routing/move/distribute |
-| 2 | Medium | Output integrity | No build-time validation in `buildKintoneUpload` |
-| 3 | Medium | Import robustness | Hard-coded RAW row-10 offset + positional column map |
+| 1 | High | Concurrency | **Resolved** - `LockService` around routing/move/distribute |
+| 2 | Medium | Output integrity | **Resolved** - build-time validation in `buildKintoneUpload` |
+| 3 | Medium | Import robustness | **Resolved** - dynamic RAW header detection + name-resolved columns |
 | 4 | Medium | Performance | Per-row `appendRow`/`deleteRow` vs the 6-minute limit |
 | 5 | Medium | Matching | Ticker canonicalization gap (`9923:HK` vs `9923.HK`) |
 | 6 | Medium | Safety net | No automated tests / CI guard |
