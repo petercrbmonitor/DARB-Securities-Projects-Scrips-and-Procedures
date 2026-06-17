@@ -1812,6 +1812,17 @@ function buildKintoneUpload() {
   var vals = adds.getRange(2, 1, lr - 1, width).getValues();
   var anySel = vals.some(function (r) { return r[20] === true; });
 
+  // Current DB membership = "already a record in Kintone" - the source of truth (populated by
+  // Refresh DB References). Used to skip re-exporting tracked profiles.
+  var dbTick = {}, dbName = {};
+  var dbSh = ss.getSheetByName(TABS.currentDb.name);
+  if (dbSh && dbSh.getLastRow() >= 2) {
+    dbSh.getRange(2, 1, dbSh.getLastRow() - 1, 2).getValues().forEach(function (d) {
+      var t = normTicker_(d[1]); if (t) dbTick[t] = true;
+      var nn = normName_(d[0]); if (nn) dbName[nn] = true;
+    });
+  }
+
   // Build-time validation: a blank ticker breaks the Source Docs key-match (Primary
   // Business Name + AlphaSense Ticker) and a blank Profile Status imports an empty
   // picklist value. Warn - with the offending names - before writing the output tabs.
@@ -1821,6 +1832,10 @@ function buildKintoneUpload() {
     if (anySel ? !sel : imported) return;            // same qualifying set as the build loop below
     var nm = String(r[3] || '').trim();
     if (!nm) return;
+    if (!anySel) {
+      var vT = normTicker_(r[4]), vN = normName_(nm);
+      if (vT ? dbTick[vT] : (vN ? dbName[vN] : false)) return; // already in DB - will be skipped
+    }
     var issues = [];
     if (!String(r[4] || '').trim()) issues.push('blank ticker');
     if (!String(r[19] || '').trim()) issues.push('blank Profile Status');
@@ -1836,13 +1851,26 @@ function buildKintoneUpload() {
     if (resp !== ui.Button.YES) { toast_('Kintone build cancelled - fix the flagged rows.'); return; }
   }
 
-  var profileRows = [], sdRows = [], profiles = 0, sdCount = 0;
-  vals.forEach(function (r) {
+  var profileRows = [], sdRows = [], profiles = 0, sdCount = 0, skippedInDb = 0;
+  vals.forEach(function (r, i) {
     var imported = r[0] === true;
     var sel = r[20] === true;
     if (anySel ? !sel : imported) return;            // selected-only, else all not imported
     var name = String(r[3] || '').trim();
     if (!name) return;
+
+    // Already in Kintone? In default (non-Select) mode, skip rows whose ticker (name fallback)
+    // is already in Current DB so a tracked profile is never re-exported, and auto-tick
+    // Imported? since DB presence confirms the import. A Select tick is an explicit override.
+    if (!anySel) {
+      var nT = normTicker_(r[4]), nN = normName_(name);
+      var inDb = nT ? !!dbTick[nT] : (nN ? !!dbName[nN] : false);
+      if (inDb) {
+        if (r[0] !== true) adds.getRange(i + 2, 1).setValue(true); // mark Imported? (DB-confirmed)
+        skippedInDb++;
+        return;
+      }
+    }
 
     var ticker = r[4], status = r[19] || '', actionStatus = r[9] || '',
         tier = r[12], pureplay = r[18] || '', sector = r[13],
@@ -1907,9 +1935,12 @@ function buildKintoneUpload() {
 
   logHistory_('Build Kintone Upload', 'Adds', profiles + ' profile(s), ' +
     profileRows.length + ' profile row(s), ' + sdCount + ' source-doc row(s)' +
+    (skippedInDb ? ' - ' + skippedInDb + ' skipped (already in Current DB, marked Imported)' : '') +
     (anySel ? ' (selected)' : ' (all not imported)'));
   toast_('Built ' + profiles + ' profile(s): ' + profileRows.length + ' Profiles row(s), ' +
-    sdCount + ' Source Docs row(s). Use Download Profiles / Source Docs CSV.');
+    sdCount + ' Source Docs row(s).' +
+    (skippedInDb ? ' Skipped ' + skippedInDb + ' already in DB.' : '') +
+    ' Use Download Profiles / Source Docs CSV.');
 }
 
 /**
