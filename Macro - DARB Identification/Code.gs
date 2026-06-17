@@ -111,6 +111,9 @@ var TAB_ROLE = {
 };
 /* Audit tabs the Utilities menu can hide (Config kept visible - it holds an editable setting). */
 var AUDIT_TAB_NAMES = ['In DB Log', 'Stats', 'History Log'];
+/* Tabs retired by the redesign - auto-deleted on scaffold (drift now lives on Sort; the two
+ * Kintone tabs are replaced by the single Kintone Upload tab). */
+var OBSOLETE_TABS = ['Attention - DB Drift', 'Kintone Profiles', 'Kintone Source Docs'];
 
 var REF_SCHEMA = ['Company Name', 'AlphaSense Ticker', 'Review Assignement',
   'Ticker Reviewed Date', 'Analyst', 'Ps Note', 'If Add Recomended Tier',
@@ -213,6 +216,7 @@ function rescaffold() {
 }
 
 function scaffoldAll_(force) {
+  removeObsoleteTabs_();
   Object.keys(TABS).forEach(function (k) { ensureTab_(TABS[k], force === true); });
   seedConfig_();
   ensureDefaultInternTabs_();
@@ -221,6 +225,19 @@ function scaffoldAll_(force) {
   refreshAddsValidations_();
   scaffoldMoveColumns_();
   colorTabs_();
+}
+
+/** Delete tabs retired by the redesign - their data now lives on Sort (Attention drift) and
+ *  the single Kintone Upload tab. Skips a tab that can't be deleted (e.g. the active sheet);
+ *  it clears on the next reload when another tab is active. */
+function removeObsoleteTabs_() {
+  var ss = SpreadsheetApp.getActive();
+  OBSOLETE_TABS.forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (sh && ss.getSheets().length > 1) {
+      try { ss.deleteSheet(sh); } catch (e) { /* active/last sheet - removed on next reload */ }
+    }
+  });
 }
 
 /** Create tab if missing; write header if new / blank / forced. */
