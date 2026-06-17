@@ -168,6 +168,12 @@ var INTERN_HEADER = ['Company Name (AlphaSense)', 'Ticker', 'Review Assignement'
   'Source Documents', 'Source', 'Note', 'Date Assigned', 'Due Date'];
 var INTERN_WIDTH = INTERN_HEADER.length; // 16
 
+/* Intern tabs are auto-detected by the "<Name> - Sort" convention, but these names are
+ * seeded so their tabs always exist without manual creation - edit this list to add or
+ * remove standing reviewers. Any other "<Name> - Sort" tab an operator creates is still
+ * picked up automatically. */
+var DEFAULT_INTERNS = ['Peter', 'Tamara'];
+
 /* ================================ MENU / SCAFFOLDING ================================ */
 
 function onOpen() {
@@ -208,6 +214,7 @@ function rescaffold() {
 function scaffoldAll_(force) {
   Object.keys(TABS).forEach(function (k) { ensureTab_(TABS[k], force === true); });
   seedConfig_();
+  ensureDefaultInternTabs_();
   scaffoldInternSheets_(force === true);
   refreshSortValidations_();
   refreshAddsValidations_();
@@ -297,6 +304,20 @@ function getInternSheets_() {
 }
 
 function internName_(sh) { return sh.getName().match(INTERN_RE)[1]; }
+
+/** Ensure a "<Name> - Sort" tab exists for each standing reviewer in DEFAULT_INTERNS.
+ *  New tabs get the canonical header + table styling; scaffoldInternSheets_ then adds the
+ *  dropdowns and colorTabs_ tints them. Existing tabs are left untouched. */
+function ensureDefaultInternTabs_() {
+  var ss = SpreadsheetApp.getActive();
+  DEFAULT_INTERNS.forEach(function (name) {
+    var tabName = name + ' - Sort';
+    if (ss.getSheetByName(tabName)) return;
+    var sh = ss.insertSheet(tabName);
+    sh.getRange(1, 1, 1, INTERN_WIDTH).setValues([INTERN_HEADER]);
+    applyFormat_(sh, INTERN_WIDTH);
+  });
+}
 
 function scaffoldInternSheets_(force) {
   var assignRule = listRule_(ASSIGN_OPTIONS);
