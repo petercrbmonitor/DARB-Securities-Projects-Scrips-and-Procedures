@@ -18,8 +18,8 @@
  *   Distribute Selected      - hand checked Sort rows to interns (Date Assigned + Due Date)
  *   Clean-up This Tab        - route reviewed rows on the intern tab you have open
  *   Process Reviews          - sweep ALL intern tabs (backstop)
- *   Build Kintone Upload File- format qualified Adds into the Kintone bulk-upload schema
- *                              (profile + URL subtable + Source Documents subtable)
+ *   Build Kintone Upload     - format qualified Adds into the single Kintone Upload tab
+ *                              (parent profile + Website URLs + Source Documents subtables)
  *   Download Kintone CSV     - download the Kintone Upload tab as a UTF-8 CSV
  *   Rescaffold Tabs          - force-rewrite headers + formatting + dropdowns
  *
@@ -31,9 +31,8 @@
  *   Insert > Drawing > draw a button > Save. Click the drawing > three-dot menu >
  *   Assign script > type one of:
  *     cleanupActiveTab     (per intern tab)
- *     buildKintoneUpload   (on the Adds tab)
- *     downloadKintoneProfilesCsv      (on the Kintone Profiles tab)
- *     downloadKintoneSourceDocsCsv    (on the Kintone Source Docs tab)
+ *     buildKintoneUpload       (on the Adds tab)
+ *     downloadKintoneUploadCsv (on the Kintone Upload tab)
  ***************************************************************************************/
 
 /* ================================ CONFIG / TAB DEFS ================================ */
@@ -107,7 +106,7 @@ var TAB_ROLE = {
   'Excluded': 'action',
   'Current DB': 'reference', 'Watchlist': 'reference', 'FR Exclude': 'reference',
   'Confirmed Exclude': 'reference', 'No Ticker Reference': 'reference',
-  'Adds': 'output', 'Kintone Profiles': 'output', 'Kintone Source Docs': 'output',
+  'Adds': 'output', 'Kintone Upload': 'output',
   'In DB Log': 'audit', 'Stats': 'audit', 'History Log': 'audit', 'Config': 'audit'
 };
 /* Audit tabs the Utilities menu can hide (Config kept visible - it holds an editable setting). */
@@ -126,20 +125,19 @@ var TABS = {
   confirmedExclude: { name: 'Confirmed Exclude', header: REF_SCHEMA.concat(['Select', 'Move To']) },
   noTicker: { name: 'No Ticker Reference', header: ['Company Name', 'Source Bucket',
     'Record Number', 'Sector'] },
-  adds: { name: 'Adds', header: ['Imported?', 'Completed?', 'Analyst',
-    'Primary Business Name', 'Alpha Sense Ticker', 'Official Name', 'New Record Flag',
-    'Primary Business Name (dup)', 'Folder Name', 'Profile Review - Action Status',
-    'Primary Business Description', 'Inclusion Rationale', 'If Add Recomended Tier',
-    'Recomended Sector', 'Website URL', 'Exchange 1 URL', 'Exchange 2 URL',
-    'Source Documents', 'Pure-Play', 'Profile Status', 'Select', 'Tier Rationale'] },
-  kintoneProfiles: { name: 'Kintone Profiles', header: ['New Record Flag',
-    'Primary Business Name', 'AlphaSense Ticker', 'Profile Status',
-    'Profile Review - Action Status', 'CRBM Tier', 'Pure-Play', 'In CRBM', 'CRBM ID',
-    'Sector', 'Primary Business Description', 'Inclusion Rationale', 'Tier Rationale',
-    'Folder Name', 'URL Type', 'URL'] },
-  kintoneSourceDocs: { name: 'Kintone Source Docs', header: ['Primary Business Name',
-    'AlphaSense Ticker', 'Source Document Name', 'Added to BOX', 'Negative News [Yes]',
-    'Note Per SD', 'Source Document Note', 'Date'] },
+  adds: { name: 'Adds', header: ['Imported?', 'Select', 'Analyst', 'New Record Flag',
+    'AS Business Name', 'Primary Business Name', 'AlphaSense Ticker',
+    'Profile Review - Action Status', 'CRBM Tier', 'Pure-Play', 'Sector',
+    'Primary Business Description', 'Inclusion Rationale', 'Folder Name',
+    'Website URLs', 'Source Documents'] },
+  /* Single merged Kintone bulk-upload tab - column order is the integration contract (matches
+     the KINTONE uPLOAD FORMAT template). Cols 1-10 = parent profile; 11-12 = Website subtable
+     (pink); 13-17 = Source Documents subtable (yellow). See KINTONE_FORMAT.md. */
+  kintoneUpload: { name: 'Kintone Upload', header: ['New record flag', 'Primary Business Name',
+    'AlphaSense Ticker', 'Profile Review - Action Status', 'CRBM Tier', 'Pure-Play', 'Sector',
+    'Primary Business Description', 'Inclusion Rationale', 'Folder Name',
+    'Website Type', "Website URL's", 'Added to BOX', 'Source Document Name', 'Note Per SD',
+    'Source URL', 'Date'] },
   cleanPull: { name: 'Clean Pull', header: ['Company Name (AlphaSense)',
     'AlphaSense Ticker', 'CIK', 'ISIN', 'MCAP ($)', 'Region', 'Domicile Country'] },
   sort: { name: 'Sort', header: ['Company Name (AlphaSense)', 'Ticker',
@@ -158,16 +156,19 @@ var TABS = {
   config: { name: 'Config', header: ['Setting', 'Value'] }
 };
 
-/* Intern row layout (0-based) - URL/source-doc capture columns sit AFTER Sector so the
-   Review Assignement / Tier / Sector dropdown columns keep their positions:
-   0 Company | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst | 5 Analyst Note |
-   6 Tier | 7 Sector | 8 Website URL | 9 Exchange 1 URL | 10 Exchange 2 URL |
-   11 Source Documents | 12 Source | 13 Note | 14 Date Assigned | 15 Due Date          */
+/* Intern row layout (0-based). The analyst fills everything needed to build the Kintone
+   Upload file (description, pure-play, websites, structured source docs):
+   0 Company (AlphaSense) | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst |
+   5 Primary Business Name | 6 Primary Business Description | 7 Inclusion Rationale |
+   8 If Add Recomended Tier | 9 Recomended Sector | 10 Pure-Play | 11 Website URLs |
+   12 Source Documents | 13 Source | 14 Note | 15 Date Assigned | 16 Due Date
+   Website URLs: one "Type | URL" per line.  Source Documents: one "Name | Note | URL | Date"
+   per line.                                                                             */
 var INTERN_HEADER = ['Company Name (AlphaSense)', 'Ticker', 'Review Assignement',
-  'Ticker Reviewed Date', 'Analyst', 'Inclusion Rationale', 'If Add Recomended Tier',
-  'Recomended Sector', 'Website URL', 'Exchange 1 URL', 'Exchange 2 URL',
-  'Source Documents', 'Source', 'Note', 'Date Assigned', 'Due Date'];
-var INTERN_WIDTH = INTERN_HEADER.length; // 16
+  'Ticker Reviewed Date', 'Analyst', 'Primary Business Name', 'Primary Business Description',
+  'Inclusion Rationale', 'If Add Recomended Tier', 'Recomended Sector', 'Pure-Play',
+  'Website URLs', 'Source Documents', 'Source', 'Note', 'Date Assigned', 'Due Date'];
+var INTERN_WIDTH = INTERN_HEADER.length; // 17
 
 /* Intern tabs are auto-detected by the "<Name> - Sort" convention, but these names are
  * seeded so their tabs always exist without manual creation - edit this list to add or
@@ -191,9 +192,8 @@ function onOpen() {
     .addItem('Move selected rows between lists', 'moveSelected')
     .addItem('Send all Review to Sort', 'consolidateToSort')
     .addSeparator()
-    .addItem('7. Build Kintone Upload Files', 'buildKintoneUpload')
-    .addItem('8. Download Profiles CSV', 'downloadKintoneProfilesCsv')
-    .addItem('9. Download Source Docs CSV', 'downloadKintoneSourceDocsCsv')
+    .addItem('7. Build Kintone Upload', 'buildKintoneUpload')
+    .addItem('8. Download Kintone Upload CSV', 'downloadKintoneUploadCsv')
     .addSeparator()
     .addSubMenu(ui.createMenu('Utilities')
       .addItem('Build Clean Pull (manual rebuild)', 'buildCleanPull')
@@ -324,6 +324,7 @@ function scaffoldInternSheets_(force) {
   var assignRule = listRule_(ASSIGN_OPTIONS);
   var tierRule = listRule_(TIER_OPTIONS);
   var sectorRule = listRule_(SECTOR_OPTIONS);
+  var pureplayRule = listRule_(PUREPLAY_OPTIONS);
   getInternSheets_().forEach(function (sh) {
     var cur = sh.getRange(1, 1, 1, INTERN_WIDTH).getValues()[0];
     var headerOk = cur.every(function (v, i) { return String(v) === String(INTERN_HEADER[i]); });
@@ -332,9 +333,10 @@ function scaffoldInternSheets_(force) {
     }
     var mr = sh.getMaxRows();
     if (mr > 1) {
-      sh.getRange(2, 3, mr - 1, 1).setDataValidation(assignRule); // Review Assignement
-      sh.getRange(2, 7, mr - 1, 1).setDataValidation(tierRule);   // If Add Recomended Tier
-      sh.getRange(2, 8, mr - 1, 1).setDataValidation(sectorRule); // Recomended Sector
+      sh.getRange(2, 3, mr - 1, 1).setDataValidation(assignRule);    // Review Assignement (col 3)
+      sh.getRange(2, 9, mr - 1, 1).setDataValidation(tierRule);      // If Add Recomended Tier (col 9)
+      sh.getRange(2, 10, mr - 1, 1).setDataValidation(sectorRule);   // Recomended Sector (col 10)
+      sh.getRange(2, 11, mr - 1, 1).setDataValidation(pureplayRule); // Pure-Play (col 11)
     }
   });
 }
@@ -346,21 +348,27 @@ function isDateish_(v) {
 }
 
 /**
- * Realign one intern data row to the canonical 16-column layout.
- * Canonical (0-based): 0 Company | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst |
- *   5 Analyst Note | 6 Tier | 7 Sector | 8 Website | 9 Exchange 1 | 10 Exchange 2 |
- *   11 Source Documents | 12 Source | 13 Note | 14 Date Assigned | 15 Due Date
- * Legacy 12-column rows put Source/Note/Date Assigned/Due Date at 8/9/10/11; detect those
- * by a date in col 10 or 11 (with cols 14/15 empty) and shift the trailing four right.
+ * Realign one intern data row to the current 17-column layout (read at the new width).
+ * Current (0-based): 0 Company | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst |
+ *   5 Primary Business Name | 6 Description | 7 Inclusion Rationale | 8 Tier | 9 Sector |
+ *   10 Pure-Play | 11 Website URLs | 12 Source Documents | 13 Source | 14 Note |
+ *   15 Date Assigned | 16 Due Date
+ * The prior 16-col layout had dates at 14/15 (Date Assigned/Due) and 8/9/10 as
+ * Website/Exchange1/Exchange2; detect by a date at 14 or 15 with col 16 blank, then remap
+ * (collapsing the three URL columns into "Type | URL" lines).
  */
 function migrateInternRow_(r) {
-  if (isDateish_(r[14]) || isDateish_(r[15])) return r;          // already canonical
-  if (isDateish_(r[10]) || isDateish_(r[11])) {                  // legacy 12-col layout
-    return [r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7],
-      '', '', '', '',                                            // Website, Exch 1, Exch 2, Source Docs
-      r[8], r[9], r[10], r[11]];                                 // Source, Note, Date Assigned, Due Date
+  if (isDateish_(r[16])) return r;                              // already current (Due Date at 16)
+  if (isDateish_(r[14]) || isDateish_(r[15])) {                // prior 16-col layout
+    var web = [];
+    if (String(r[8] || '').trim()) web.push('Website | ' + String(r[8]).trim());
+    if (String(r[9] || '').trim()) web.push('Exchange | ' + String(r[9]).trim());
+    if (String(r[10] || '').trim()) web.push('Exchange | ' + String(r[10]).trim());
+    return [r[0], r[1], r[2], r[3], r[4],
+      r[0], '', r[5], r[6], r[7], '',                           // PBN(=AS name), Desc, InclRat, Tier, Sector, Pure-Play
+      web.join('\n'), r[11], r[12], r[13], r[14], r[15]];       // Website URLs, SrcDocs, Source, Note, DateAssigned, Due
   }
-  return r;                                                      // markers / undated rows untouched
+  return r;                                                     // markers / undated rows untouched
 }
 
 /** Rewrite an intern tab's header to the canonical schema and realign its rows. */
@@ -394,21 +402,20 @@ function refreshSortValidations_() {
   if (interns.length) sh.getRange(2, 13, n, 1).setDataValidation(listRule_(interns)); // Assign To
 }
 
-/** Dropdowns on the Adds tab: Tier (M), Sector (N), Pure-Play (S), Profile Status (T);
- *  Select checkboxes (U). */
+/** Dropdowns on the Adds tab: Action Status (H), CRBM Tier (I), Pure-Play (J), Sector (K);
+ *  Imported? + Select checkboxes (A, B). */
 function refreshAddsValidations_() {
   var sh = SpreadsheetApp.getActive().getSheetByName(TABS.adds.name);
   if (!sh) return;
   var mr = sh.getMaxRows();
   if (mr < 2) return;
-  sh.getRange(2, 10, mr - 1, 1).setDataValidation(listRuleAllowOther_(ACTION_STATUS_OPTIONS)); // Profile Review - Action Status
-  sh.getRange(2, 13, mr - 1, 1).setDataValidation(listRule_(TIER_OPTIONS));
-  sh.getRange(2, 14, mr - 1, 1).setDataValidation(listRule_(SECTOR_OPTIONS));
-  sh.getRange(2, 19, mr - 1, 1).setDataValidation(listRule_(PUREPLAY_OPTIONS));
-  sh.getRange(2, 20, mr - 1, 1).setDataValidation(listRule_(PROFILE_STATUS_OPTIONS));
+  sh.getRange(2, 8, mr - 1, 1).setDataValidation(listRuleAllowOther_(ACTION_STATUS_OPTIONS)); // Action Status (H)
+  sh.getRange(2, 9, mr - 1, 1).setDataValidation(listRule_(TIER_OPTIONS));      // CRBM Tier (I)
+  sh.getRange(2, 10, mr - 1, 1).setDataValidation(listRule_(PUREPLAY_OPTIONS)); // Pure-Play (J)
+  sh.getRange(2, 11, mr - 1, 1).setDataValidation(listRule_(SECTOR_OPTIONS));   // Sector (K)
   var lr = sh.getLastRow();
   if (lr >= 2) {
-    try { sh.getRange(2, 21, lr - 1, 1).insertCheckboxes(); } catch (e) { /* already present */ }
+    try { sh.getRange(2, 1, lr - 1, 2).insertCheckboxes(); } catch (e) { /* already present */ } // Imported? + Select
   }
 }
 
@@ -1412,12 +1419,12 @@ function distributeSelected_impl_() {
     var who = String(r[12] || '').trim();            // Assign To
     if (!who || !interns[who]) { skipped++; return; }
     var sh = interns[who];
-    // Intern row (16 cols): carry tier/sector/source/note; seed Inclusion Rationale with
-    // its label so interns write consistently. URL + source-doc columns start blank.
-    sh.appendRow([r[0], r[1], '', '', who, withPrefix_(r[5], RATIONALE_PREFIX),
-      r[6] || '', r[7] || '',
-      '', '', '', '',                                // Website, Exch 1, Exch 2, Source Docs
-      r[8] || '', r[9] || '', today, due]);
+    // Intern row (17 cols): default Primary Business Name to the AlphaSense name and seed
+    // the Description / Inclusion Rationale labels. Pure-Play, Website URLs and Source
+    // Documents start blank for the analyst to fill.
+    sh.appendRow([r[0], r[1], '', '', who, r[0], DESC_PREFIX,
+      withPrefix_(r[5], RATIONALE_PREFIX), r[6] || '', r[7] || '', '',
+      '', '', r[8] || '', r[9] || '', today, due]);
     formatRow_(sh, sh.getLastRow(), INTERN_WIDTH);
     touched[who] = sh;
     toDelete.push(i + 2);
@@ -1536,7 +1543,7 @@ function reorganizeInternTab_(sh) {
 /** Required fields per choice - rows missing them are skipped, never mis-routed. */
 function requiredOk_(assignment, r) {
   if (!String(r[0] || '').trim() || !String(r[1] || '').trim()) return false; // name + ticker
-  if (assignment === 'Add' && !String(r[6] || '').trim()) return false;       // tier when Add
+  if (assignment === 'Add' && !String(r[8] || '').trim()) return false;       // tier when Add
   return true;
 }
 
@@ -1546,10 +1553,10 @@ function requiredOk_(assignment, r) {
  * Skips creating a duplicate when the company (by ticker, or name if ticker blank) is
  * already on the destination list. Returns true if a destination row was appended, false
  * if it was a duplicate skip. (In DB is an audit log and always appends.)
- * Intern row (16 cols):
- *   0 Company | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst | 5 Inclusion Rationale |
- *   6 Tier | 7 Sector | 8 Website | 9 Exchange 1 | 10 Exchange 2 | 11 Source Documents |
- *   12 Source | 13 Note | 14 Date Assigned | 15 Due Date
+ * Intern row (17 cols):
+ *   0 Company | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst | 5 Primary Business Name |
+ *   6 Description | 7 Inclusion Rationale | 8 Tier | 9 Sector | 10 Pure-Play |
+ *   11 Website URLs | 12 Source Documents | 13 Source | 14 Note | 15 Date Assigned | 16 Due Date
  */
 function routeRow_(internSh, rowNum, r, assignment) {
   var ss = SpreadsheetApp.getActive();
@@ -1557,9 +1564,10 @@ function routeRow_(internSh, rowNum, r, assignment) {
   var company = r[0], ticker = r[1];
   var nT = normTicker_(ticker), nN = normName_(company);
   var analyst = String(r[4] || '').trim() || internName_(internSh);
-  var analystNote = r[5], tier = r[6], sector = r[7];
-  var website = r[8], exch1 = r[9], exch2 = r[10], sourceDocs = r[11];
-  var source = r[12], note = r[13];
+  var pbn = String(r[5] || '').trim() || company;   // canonical name; default to the AlphaSense name
+  var desc = r[6], inclusion = r[7], tier = r[8], sector = r[9], pureplay = r[10];
+  var websites = r[11], sourceDocs = r[12];
+  var source = r[13], note = r[14];
   var appended = true;
 
   if (assignment === 'Watchlist') {
@@ -1567,7 +1575,7 @@ function routeRow_(internSh, rowNum, r, assignment) {
     if (findExistingRow_(wl, 1, 2, nT, nN) > 0) {
       appended = false;                              // already on Watchlist - no duplicate
     } else {
-      wl.appendRow([company, ticker, assignment, today, analyst, analystNote,
+      wl.appendRow([company, ticker, assignment, today, analyst, inclusion,
         tier, source, note, tickerFlag_(ticker), '', sector]); // sector -> Watchlist Sector col
       formatRow_(wl, wl.getLastRow(), TABS.watchlist.header.length);
     }
@@ -1576,38 +1584,33 @@ function routeRow_(internSh, rowNum, r, assignment) {
     if (findExistingRow_(dest, 1, 2, nT, nN) > 0) {
       appended = false;
     } else {
-      dest.appendRow([company, ticker, assignment, today, analyst, analystNote,
+      dest.appendRow([company, ticker, assignment, today, analyst, inclusion,
         tier, source, note, tickerFlag_(ticker)]);
       formatRow_(dest, dest.getLastRow(),
         TABS[assignment === 'FR Exclude' ? 'frExclude' : 'confirmedExclude'].header.length);
     }
   } else if (assignment === 'Add') {
     var addsSh = ss.getSheetByName(TABS.adds.name);
-    if (findExistingRow_(addsSh, 4, 5, nT, nN) > 0) {
+    if (findExistingRow_(addsSh, 5, 7, nT, nN) > 0) {
       appended = false;                              // already staged on Adds - no duplicate
     } else {
-      // Adds row (22 cols): Imported?, Completed?, Analyst, PBN, Ticker, Official Name,
-      // New Record Flag, PBN (dup), Folder Name, Profile Review - Action Status,
-      // Primary Business Description, Inclusion Rationale, Tier, Sector, Website, Exch 1,
-      // Exch 2, Source Documents, Pure-Play, Profile Status, Select, Tier Rationale.
-      // Description / Inclusion Rationale / Tier Rationale are seeded with their labels.
-      addsSh.appendRow([false, false, analyst, company, ticker, '', '*', '', '', '',
-        DESC_PREFIX, withPrefix_(analystNote, RATIONALE_PREFIX), tier, sector,
-        website, exch1, exch2, sourceDocs, '', '', false, TIER_RATIONALE_PREFIX]);
+      // Adds row (16 cols): Imported?, Select, Analyst, New Record Flag, AS Business Name,
+      // Primary Business Name, AlphaSense Ticker, Profile Review - Action Status, CRBM Tier,
+      // Pure-Play, Sector, Primary Business Description, Inclusion Rationale, Folder Name,
+      // Website URLs, Source Documents. Description / Inclusion Rationale seeded with labels.
+      addsSh.appendRow([false, false, analyst, '*', company, pbn, ticker, '', tier, pureplay,
+        sector, withPrefix_(desc, DESC_PREFIX), withPrefix_(inclusion, RATIONALE_PREFIX), '',
+        websites, sourceDocs]);
       var ar = addsSh.getLastRow();
-      // Official Name, PBN (dup) and Folder Name mirror Primary Business Name (col D)
-      addsSh.getRange(ar, 6).setFormula('=D' + ar);
-      addsSh.getRange(ar, 8).setFormula('=D' + ar);
-      addsSh.getRange(ar, 9).setFormula('=D' + ar);
-      addsSh.getRange(ar, 1, 1, 2).insertCheckboxes(); // Imported? / Completed? = False
-      addsSh.getRange(ar, 21).insertCheckboxes();      // Select = False
+      addsSh.getRange(ar, 14).setFormula('=F' + ar);   // Folder Name mirrors Primary Business Name (col F)
+      addsSh.getRange(ar, 1, 1, 2).insertCheckboxes(); // Imported? / Select = False
       formatRow_(addsSh, ar, TABS.adds.header.length);
       // Hold on Watchlist until it appears Active in a DB refresh (then it graduates off).
       var wlAdd = ss.getSheetByName('Watchlist');
       if (findExistingRow_(wlAdd, 1, 2, nT, nN) <= 0) {
         var pendNote = String(note || '').trim();
         pendNote = pendNote ? pendNote + ' - Pending Kintone Add' : 'Pending Kintone Add';
-        wlAdd.appendRow([company, ticker, 'Add', today, analyst, analystNote, tier,
+        wlAdd.appendRow([company, ticker, 'Add', today, analyst, inclusion, tier,
           source, pendNote, tickerFlag_(ticker), '', sector, '']);
         formatRow_(wlAdd, wlAdd.getLastRow(), TABS.watchlist.header.length);
       }
@@ -1785,23 +1788,18 @@ function moveWriteDest_(dest, d, today) {
   return true;
 }
 
-/* =============== STEP 4 - KINTONE BULK-UPLOAD FORMATTER (TWO TABLES) ================ */
+/* =============== STEP 4 - KINTONE BULK-UPLOAD FORMATTER (SINGLE TAB) ================ */
 
 /**
- * Build the Kintone bulk-upload from qualified Adds into TWO separate tables, because the
- * URL list and the Source Documents list are distinct subtables in Kintone and import as
- * separate files:
- *   "Kintone Profiles"    - one PARENT row per profile (New Record Flag "*") plus a
- *                           CONTINUATION row (blank flag + blank parent fields) for each
- *                           extra URL, tagged Website / Exchange. Creates the records and
- *                           their URL subtable.
- *   "Kintone Source Docs" - one row per source document, keyed by Primary Business Name +
- *                           AlphaSense Ticker so Kintone can match the record and append to
- *                           its Source Documents subtable. The key is on the first row of a
- *                           record's block; continuation rows leave it blank.
- * Import order: Profiles first (creates the records), then Source Docs (matched by ticker).
+ * Build the single "Kintone Upload" tab from qualified Adds. Column order matches the
+ * KINTONE uPLOAD FORMAT template (see KINTONE_FORMAT.md): cols 1-10 are the parent profile,
+ * 11-12 the Website subtable (pink), 13-17 the Source Documents subtable (yellow). Per
+ * record we emit one row per Source Document then one row per Website URL; the parent fields
+ * are repeated on every row and the New record flag "*" sits on the first row only.
+ * Source docs come from the Adds "Source Documents" cell ("Name | Note | URL | Date" per
+ * line); websites from "Website URLs" ("Type | URL" per line).
  * Which rows qualify: if any Adds "Select" box is ticked, only ticked rows; otherwise every
- * Adds row whose "Imported?" box is unticked.
+ * Adds row whose "Imported?" box is unticked AND that is not already in Current DB.
  */
 function buildKintoneUpload() {
   scaffoldAll_();
@@ -1809,9 +1807,9 @@ function buildKintoneUpload() {
   var adds = ss.getSheetByName(TABS.adds.name);
   var lr = adds.getLastRow();
   if (lr < 2) { toast_('Adds tab is empty - nothing to format.'); return; }
-  var width = TABS.adds.header.length; // 22
+  var width = TABS.adds.header.length; // 16
   var vals = adds.getRange(2, 1, lr - 1, width).getValues();
-  var anySel = vals.some(function (r) { return r[20] === true; });
+  var anySel = vals.some(function (r) { return r[1] === true; });  // Select = col B
 
   // Current DB membership = "already a record in Kintone" - the source of truth (populated by
   // Refresh DB References). Used to skip re-exporting tracked profiles.
@@ -1823,23 +1821,23 @@ function buildKintoneUpload() {
       var nn = normName_(d[0]); if (nn) dbName[nn] = true;
     });
   }
+  function inDb_(r) {                                 // match by ticker (col G), name fallback
+    var nT = normTicker_(r[6]), nN = normName_(r[5]) || normName_(r[4]);
+    return nT ? !!dbTick[nT] : (nN ? !!dbName[nN] : false);
+  }
 
-  // Build-time validation: a blank ticker breaks the Source Docs key-match (Primary
-  // Business Name + AlphaSense Ticker) and a blank Profile Status imports an empty
-  // picklist value. Warn - with the offending names - before writing the output tabs.
+  // Build-time validation: a blank ticker breaks the Source Docs key-match and a blank
+  // Action Status imports an empty picklist value. Warn - with the offending names - first.
   var problems = [];
   vals.forEach(function (r) {
-    var imported = r[0] === true, sel = r[20] === true;
+    var imported = r[0] === true, sel = r[1] === true;
     if (anySel ? !sel : imported) return;            // same qualifying set as the build loop below
-    var nm = String(r[3] || '').trim();
+    var nm = String(r[5] || '').trim();
     if (!nm) return;
-    if (!anySel) {
-      var vT = normTicker_(r[4]), vN = normName_(nm);
-      if (vT ? dbTick[vT] : (vN ? dbName[vN] : false)) return; // already in DB - will be skipped
-    }
+    if (!anySel && inDb_(r)) return;                 // already in DB - will be skipped
     var issues = [];
-    if (!String(r[4] || '').trim()) issues.push('blank ticker');
-    if (!String(r[19] || '').trim()) issues.push('blank Profile Status');
+    if (!String(r[6] || '').trim()) issues.push('blank ticker');
+    if (!String(r[7] || '').trim()) issues.push('blank Action Status');
     if (issues.length) problems.push(nm + ' (' + issues.join(', ') + ')');
   });
   if (problems.length) {
@@ -1847,107 +1845,71 @@ function buildKintoneUpload() {
     var resp = ui.alert('Kintone Upload - check these rows',
       problems.length + ' qualifying Add row(s) have issues that affect the Kintone import:\n\n' +
       problems.slice(0, 20).join('\n') + (problems.length > 20 ? '\n...' : '') +
-      '\n\nBlank ticker breaks the Source Documents key-match; blank Profile Status imports ' +
+      '\n\nBlank ticker breaks the Source Documents key-match; blank Action Status imports ' +
       'an empty value.\n\nBuild anyway?', ui.ButtonSet.YES_NO);
     if (resp !== ui.Button.YES) { toast_('Kintone build cancelled - fix the flagged rows.'); return; }
   }
 
-  var profileRows = [], sdRows = [], profiles = 0, sdCount = 0, skippedInDb = 0;
+  var out = [], profiles = 0, skippedInDb = 0;
   vals.forEach(function (r, i) {
-    var imported = r[0] === true;
-    var sel = r[20] === true;
+    var imported = r[0] === true, sel = r[1] === true;
     if (anySel ? !sel : imported) return;            // selected-only, else all not imported
-    var name = String(r[3] || '').trim();
-    if (!name) return;
+    var pbn = String(r[5] || '').trim();             // Primary Business Name (col F)
+    if (!pbn) return;
 
-    // Already in Kintone? In default (non-Select) mode, skip rows whose ticker (name fallback)
-    // is already in Current DB so a tracked profile is never re-exported, and auto-tick
-    // Imported? since DB presence confirms the import. A Select tick is an explicit override.
-    if (!anySel) {
-      var nT = normTicker_(r[4]), nN = normName_(name);
-      var inDb = nT ? !!dbTick[nT] : (nN ? !!dbName[nN] : false);
-      if (inDb) {
-        if (r[0] !== true) adds.getRange(i + 2, 1).setValue(true); // mark Imported? (DB-confirmed)
-        skippedInDb++;
-        return;
-      }
+    // Already in Kintone? In default (non-Select) mode, skip rows already in Current DB so a
+    // tracked profile is never re-exported, and auto-tick Imported? (DB-confirmed). A Select
+    // tick is an explicit override that still exports.
+    if (!anySel && inDb_(r)) {
+      if (r[0] !== true) adds.getRange(i + 2, 1).setValue(true); // mark Imported?
+      skippedInDb++;
+      return;
     }
 
-    var ticker = r[4], status = r[19] || '', actionStatus = r[9] || '',
-        tier = r[12], pureplay = r[18] || '', sector = r[13],
-        desc = r[10], rationale = r[11], tierRationale = r[21] || '', folder = name;
+    var ticker = r[6], actionStatus = r[7] || '', tier = r[8], pureplay = r[9] || '',
+        sector = r[10], desc = r[11], inclusion = r[12],
+        folder = String(r[13] || '').trim() || pbn;
 
-    // --- Table 1: profile + URL subtable ---
-    var urls = [];
-    if (String(r[14] || '').trim()) urls.push(['Website', String(r[14]).trim()]);
-    if (String(r[15] || '').trim()) urls.push(['Exchange', String(r[15]).trim()]);
-    if (String(r[16] || '').trim()) urls.push(['Exchange', String(r[16]).trim()]);
-    var pn = Math.max(urls.length, 1);
-    for (var i = 0; i < pn; i++) {
-      var first = (i === 0);
-      var u = urls[i] || ['', ''];
-      profileRows.push([
-        first ? '*' : '',
-        first ? name : '',
-        first ? ticker : '',
-        first ? status : '',
-        first ? actionStatus : '',
-        first ? tier : '',
-        first ? pureplay : '',
-        first ? 'No' : '',          // In CRBM - new profiles default to No
-        '',                          // CRBM ID - blank for new records
-        first ? sector : '',
-        first ? desc : '',
-        first ? rationale : '',
-        first ? tierRationale : '',
-        first ? folder : '',
-        u[0], u[1]                   // URL Type, URL
-      ]);
-    }
+    var sds = parseSourceDocs_(r[15]);   // [{name, note, url, date}] -> yellow subtable
+    var webs = parseWebsites_(r[14]);    // [{type, url}]             -> pink subtable
+    var blocks = [];
+    sds.forEach(function (sd) { blocks.push({ sd: sd }); });   // Source Documents rows first
+    webs.forEach(function (w) { blocks.push({ web: w }); });   // then Website URL rows
+    if (!blocks.length) blocks.push({});                       // parent-only row
 
-    // --- Table 2: Source Documents subtable (keyed by name + ticker) ---
-    var sds = parseSourceDocs_(r[17]);
-    sds.forEach(function (sd, k) {
-      var first = (k === 0);
-      sdRows.push([
-        first ? name : '',           // key: Primary Business Name (first row of block)
-        first ? ticker : '',         // key: AlphaSense Ticker
-        sd.name, 'No', '', '', sd.note, '' // Name, Added to BOX, Neg News, Note Per SD, SD Note, Date
+    blocks.forEach(function (b, k) {
+      var w = b.web || { type: '', url: '' };
+      var sd = b.sd || { name: '', note: '', url: '', date: '' };
+      out.push([
+        k === 0 ? '*' : '',                          // New record flag (first row of record only)
+        pbn, ticker, actionStatus, tier, pureplay, sector, desc, inclusion, folder, // parent (repeated)
+        w.type || '', w.url || '',                   // pink: Website Type / Website URL's
+        b.sd ? 'Yes' : '', sd.name || '', sd.note || '', sd.url || '', sd.date || '' // yellow: Source Docs
       ]);
-      sdCount++;
     });
-
     profiles++;
   });
 
-  var pSh = ensureTab_(TABS.kintoneProfiles, true);
-  clearBody_(pSh);
-  if (profileRows.length) {
-    pSh.getRange(2, 1, profileRows.length, TABS.kintoneProfiles.header.length).setValues(profileRows);
+  var uSh = ensureTab_(TABS.kintoneUpload, true);
+  clearBody_(uSh);
+  if (out.length) {
+    uSh.getRange(2, 1, out.length, TABS.kintoneUpload.header.length).setValues(out);
   }
-  applyFormat_(pSh, TABS.kintoneProfiles.header.length);
+  applyFormat_(uSh, TABS.kintoneUpload.header.length);
 
-  var sSh = ensureTab_(TABS.kintoneSourceDocs, true);
-  clearBody_(sSh);
-  if (sdRows.length) {
-    sSh.getRange(2, 1, sdRows.length, TABS.kintoneSourceDocs.header.length).setValues(sdRows);
-  }
-  applyFormat_(sSh, TABS.kintoneSourceDocs.header.length);
-
-  logHistory_('Build Kintone Upload', 'Adds', profiles + ' profile(s), ' +
-    profileRows.length + ' profile row(s), ' + sdCount + ' source-doc row(s)' +
+  logHistory_('Build Kintone Upload', 'Adds', profiles + ' profile(s), ' + out.length +
+    ' upload row(s)' +
     (skippedInDb ? ' - ' + skippedInDb + ' skipped (already in Current DB, marked Imported)' : '') +
     (anySel ? ' (selected)' : ' (all not imported)'));
-  toast_('Built ' + profiles + ' profile(s): ' + profileRows.length + ' Profiles row(s), ' +
-    sdCount + ' Source Docs row(s).' +
+  toast_('Built ' + profiles + ' profile(s): ' + out.length + ' Kintone Upload row(s).' +
     (skippedInDb ? ' Skipped ' + skippedInDb + ' already in DB.' : '') +
-    ' Use Download Profiles / Source Docs CSV.');
+    ' Use Download Kintone Upload CSV.');
 }
 
 /**
- * Parse the free-text Source Documents cell into entries. One source per line (split on
- * newlines or ";"). Within a line, "Name | note" splits the document name from an optional
- * note (extra "|" segments fold into the note). Returns [{name, note}].
+ * Parse the free-text Source Documents cell into entries, one per line (split on newlines
+ * or ";"). Within a line "Name | Note | URL | Date" splits into the four fields; missing
+ * trailing fields default to blank. Returns [{name, note, url, date}].
  */
 function parseSourceDocs_(cell) {
   var s = String(cell || '').trim();
@@ -1956,8 +1918,25 @@ function parseSourceDocs_(cell) {
     .map(function (line) { return line.trim(); })
     .filter(function (line) { return line.length; })
     .map(function (line) {
-      var parts = line.split('|').map(function (p) { return p.trim(); });
-      return { name: parts[0] || '', note: parts.slice(1).join(' | ') };
+      var p = line.split('|').map(function (x) { return x.trim(); });
+      return { name: p[0] || '', note: p[1] || '', url: p[2] || '', date: p[3] || '' };
+    });
+}
+
+/**
+ * Parse the free-text Website URLs cell into entries, one per line. "Type | URL" splits the
+ * type (Website / Exchange) from the URL; a bare line is treated as a Website. Returns
+ * [{type, url}].
+ */
+function parseWebsites_(cell) {
+  var s = String(cell || '').trim();
+  if (!s) return [];
+  return s.split(/\r?\n|;/)
+    .map(function (line) { return line.trim(); })
+    .filter(function (line) { return line.length; })
+    .map(function (line) {
+      var p = line.split('|').map(function (x) { return x.trim(); });
+      return p.length >= 2 ? { type: p[0], url: p.slice(1).join(' | ') } : { type: 'Website', url: p[0] };
     });
 }
 
@@ -2000,20 +1979,12 @@ function downloadCsvDialog_(csv, fname, title) {
   SpreadsheetApp.getUi().showModalDialog(html, title);
 }
 
-function downloadKintoneProfilesCsv() {
-  var csv = tabToCsv_(TABS.kintoneProfiles.name, TABS.kintoneProfiles.header.length);
-  if (!csv) { toast_('Kintone Profiles tab is empty - run Build Kintone Upload Files first.'); return; }
-  downloadCsvDialog_(csv, 'Kintone_Profiles_' +
+function downloadKintoneUploadCsv() {
+  var csv = tabToCsv_(TABS.kintoneUpload.name, TABS.kintoneUpload.header.length);
+  if (!csv) { toast_('Kintone Upload tab is empty - run Build Kintone Upload first.'); return; }
+  downloadCsvDialog_(csv, 'Kintone_Upload_' +
     Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd') + '.csv',
-    'Profiles CSV');
-}
-
-function downloadKintoneSourceDocsCsv() {
-  var csv = tabToCsv_(TABS.kintoneSourceDocs.name, TABS.kintoneSourceDocs.header.length);
-  if (!csv) { toast_('Kintone Source Docs tab is empty - run Build Kintone Upload Files first.'); return; }
-  downloadCsvDialog_(csv, 'Kintone_SourceDocs_' +
-    Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd') + '.csv',
-    'Source Docs CSV');
+    'Kintone Upload CSV');
 }
 
 /* ================================ SHARED UTILITIES ================================== */
