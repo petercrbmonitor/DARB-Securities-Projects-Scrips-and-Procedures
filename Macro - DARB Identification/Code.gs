@@ -230,11 +230,22 @@ function ensureTab_(def, forceHeader) {
   var isNew = false;
   if (!sh) { sh = ss.insertSheet(def.name); isNew = true; }
   if (forceHeader || isNew || sh.getRange(1, 1).getValue() === '') {
+    resetTabForHeader_(sh, def.header.length);  // wipe stale validations / old trailing headers
     sh.getRange(1, 1, 1, def.header.length).setValues([def.header]);
     applyFormat_(sh, def.header.length);
   }
   if (isNew && def.name === TABS.noTicker.name) sh.hideSheet();
   return sh;
+}
+
+/** When a tab's header is (re)written after a schema change, clear ALL stale data validations
+ *  on the sheet (old dropdowns/checkboxes that would otherwise sit on the wrong columns) and
+ *  blank any leftover header cells beyond the new width. The scaffolders re-apply the correct
+ *  validations / checkboxes afterwards. */
+function resetTabForHeader_(sh, headerLen) {
+  var mr = sh.getMaxRows(), mc = sh.getMaxColumns();
+  sh.getRange(1, 1, mr, mc).clearDataValidations();
+  if (mc > headerLen) sh.getRange(1, headerLen + 1, 1, mc - headerLen).clearContent();
 }
 
 function seedConfig_() {
@@ -383,6 +394,7 @@ function migrateInternTab_(sh) {
     });
   }
   clearBody_(sh);
+  resetTabForHeader_(sh, INTERN_WIDTH);   // wipe stale validations + old trailing headers
   sh.getRange(1, 1, 1, INTERN_WIDTH).setValues([INTERN_HEADER]);
   if (rows.length) sh.getRange(2, 1, rows.length, INTERN_WIDTH).setValues(rows);
   applyFormat_(sh, INTERN_WIDTH);
