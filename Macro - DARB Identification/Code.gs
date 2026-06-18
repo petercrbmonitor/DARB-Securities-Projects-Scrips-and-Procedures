@@ -99,7 +99,8 @@ var TAB_COLOR = {
   reference: '#127a7a',   // reference data (Current DB, Watchlist, exclude lists)
   output: '#0b8043',      // deliverables (Adds, Kintone Upload)
   audit: '#999999',       // logs / settings
-  intern: '#1aa39a'       // "<Name> - Sort" tabs
+  intern: '#1aa39a',      // "<Name> - Sort" tabs
+  guide: '#8e44ad'        // operator guides (Pipeline Status, Workflow)
 };
 var TAB_ROLE = {
   'Clean Pull': 'action', 'Sort': 'action', 'Review': 'action',
@@ -107,13 +108,36 @@ var TAB_ROLE = {
   'Current DB': 'reference', 'Watchlist': 'reference', 'FR Exclude': 'reference',
   'Confirmed Exclude': 'reference', 'No Ticker Reference': 'reference',
   'Adds': 'output', 'Kintone Upload': 'output',
-  'In DB Log': 'audit', 'Stats': 'audit', 'History Log': 'audit', 'Config': 'audit'
+  'In DB Log': 'audit', 'Stats': 'audit', 'History Log': 'audit', 'Config': 'audit',
+  'Pipeline Status': 'guide', 'Workflow': 'guide'
 };
 /* Audit tabs the Utilities menu can hide (Config kept visible - it holds an editable setting). */
 var AUDIT_TAB_NAMES = ['In DB Log', 'Stats', 'History Log'];
 /* Tabs retired by the redesign - auto-deleted on scaffold (drift now lives on Sort; the two
  * Kintone tabs are replaced by the single Kintone Upload tab). */
 var OBSOLETE_TABS = ['Attention - DB Drift', 'Kintone Profiles', 'Kintone Source Docs'];
+
+/* Operator dashboard: the numbered pipeline steps tracked on the "Pipeline Status" tab. */
+var PIPELINE_STEPS = [
+  '1. Refresh DB References',
+  '2. Import Pull Files',
+  '3. Run Crosscheck',
+  '4. Distribute Selected to Interns',
+  '5. Clean-up This Intern Tab',
+  '6. Process Reviews',
+  '7. Build Kintone Upload',
+  '8. Download Kintone Upload CSV'
+];
+/* logHistory_ action -> the pipeline step it completes (drives the Status tab Done marks). */
+var STEP_BY_ACTION = {
+  'Refresh DB References': '1. Refresh DB References',
+  'Build Clean Pull': '2. Import Pull Files',
+  'Run Crosscheck': '3. Run Crosscheck',
+  'Distribute Selected': '4. Distribute Selected to Interns',
+  'Clean-up This Tab': '5. Clean-up This Intern Tab',
+  'Process Reviews': '6. Process Reviews',
+  'Build Kintone Upload': '7. Build Kintone Upload'
+};
 
 var REF_SCHEMA = ['Company Name', 'AlphaSense Ticker', 'Review Assignement',
   'Ticker Reviewed Date', 'Analyst', 'Ps Note', 'If Add Recomended Tier',
@@ -156,7 +180,8 @@ var TABS = {
   stats: { name: 'Stats', header: ['Timestamp', 'Run Type', 'Input', 'Sort', 'Review',
     'Excluded', 'Add', 'Watchlist', 'FR Exclude', 'Confirmed Exclude', 'In DB'] },
   history: { name: 'History Log', header: ['Timestamp', 'Action', 'Source', 'Details'] },
-  config: { name: 'Config', header: ['Setting', 'Value'] }
+  config: { name: 'Config', header: ['Setting', 'Value'] },
+  status: { name: 'Pipeline Status', header: ['Step', 'Last Run', 'Result', 'Done This Cycle'] }
 };
 
 /* Intern row layout (0-based). The analyst fills everything needed to build the Kintone
@@ -202,6 +227,7 @@ function onOpen() {
       .addItem('Build Clean Pull (manual rebuild)', 'buildCleanPull')
       .addItem('Import legacy Watchlist (one-time)', 'showWatchlistImportDialog')
       .addItem('Rescaffold / Restyle Tabs', 'rescaffold')
+      .addItem('Start New Cycle (reset step checkmarks)', 'startNewCycle')
       .addSeparator()
       .addItem('Hide audit + log tabs', 'hideAuditTabs')
       .addItem('Show all tabs', 'showAllTabs'))
@@ -219,11 +245,14 @@ function scaffoldAll_(force) {
   removeObsoleteTabs_();
   Object.keys(TABS).forEach(function (k) { ensureTab_(TABS[k], force === true); });
   seedConfig_();
+  seedStatus_();
+  ensureWorkflowTab_(force === true);
   ensureDefaultInternTabs_();
   scaffoldInternSheets_(force === true);
   refreshSortValidations_();
   refreshAddsValidations_();
   scaffoldMoveColumns_();
+  setCaptureHints_();
   colorTabs_();
 }
 
@@ -238,6 +267,110 @@ function removeObsoleteTabs_() {
       try { ss.deleteSheet(sh); } catch (e) { /* active/last sheet - removed on next reload */ }
     }
   });
+}
+
+/* ===================== OPERATOR STATUS / WORKFLOW =================================== */
+
+/** Seed the "Pipeline Status" dashboard with one row per step (only when empty). */
+function seedStatus_() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.status.name);
+  if (!sh || sh.getLastRow() >= 2) return;
+  var rows = PIPELINE_STEPS.map(function (s) { return [s, '', '', '']; });
+  sh.getRange(2, 1, rows.length, 4).setValues(rows);
+  applyFormat_(sh, TABS.status.header.length);
+}
+
+/** Stamp a step's row on the Status tab: Last Run = now, Result, Done This Cycle = check. */
+function markStep_(label, result) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.status.name);
+  if (!sh) return;
+  var lr = sh.getLastRow();
+  if (lr < 2) return;
+  var labels = sh.getRange(2, 1, lr - 1, 1).getValues();
+  for (var i = 0; i < labels.length; i++) {
+    if (String(labels[i][0]) === label) {
+      sh.getRange(i + 2, 2, 1, 3).setValues([[new Date(), String(result || ''), '✓']]);
+      formatRow_(sh, i + 2, TABS.status.header.length);
+      return;
+    }
+  }
+}
+
+/** Utilities action: clear the Done-This-Cycle checks to start a fresh weekly cycle. */
+function startNewCycle() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.status.name);
+  if (sh && sh.getLastRow() >= 2) sh.getRange(2, 4, sh.getLastRow() - 1, 1).clearContent();
+  logHistory_('Start New Cycle', 'Pipeline Status', 'Cleared step completion checks');
+  toast_('New cycle started - step checkmarks cleared.');
+}
+
+var WORKFLOW_LINES = [
+  'DARB Pipeline - Operating Workflow',
+  '',
+  'Run these from the "DARB Pipeline" menu, in order. The "Pipeline Status" tab shows which',
+  'steps have run this cycle (Last Run, Result, Done This Cycle).',
+  '',
+  '1. Refresh DB References - upload the latest Kintone export (.xlsx). Rebuilds Current DB and',
+  '   merges the Watchlist (locally added rows kept; rows now Active graduate off).',
+  '2. Import Pull Files - upload AlphaSense Search Summary exports (CSV/XLSX). Builds Clean Pull.',
+  '3. Run Crosscheck - sorts Clean Pull into Sort (new), Review (near-match) and Excluded',
+  '   (already tracked). DB-drift cases (name/ticker changed vs the DB) also land on Sort,',
+  '   tagged "DB Drift" in the Source column.',
+  '4. Distribute Selected to Interns - on the Sort tab, tick Select, then either:',
+  '     - set Assign To (an analyst) and run Distribute, to hand the row to a <Name> - Sort tab; or',
+  '     - set Move To (Watchlist / FR Exclude / Confirmed Exclude / Remove) and run "Move selected',
+  '       rows between lists" to file it directly - no analyst needed (e.g. an obvious non-DARB name).',
+  '5. Clean-up This Intern Tab - open your <Name> - Sort tab, set Review Assignement per row',
+  '   (Add / Watchlist / FR Exclude / Confirmed Exclude / In DB), then run to route them.',
+  '6. Process Reviews - backstop sweep that routes eligible rows across ALL intern tabs.',
+  '7. Build Kintone Upload - formats qualified Adds into the single "Kintone Upload" tab.',
+  '8. Download Kintone Upload CSV - download it and import into Kintone.',
+  '',
+  'Analyst capture formats (on your <Name> - Sort tab):',
+  '   Website URLs - one per line:   Type | URL',
+  '        e.g.   Website | https://company.com        Exchange | https://exchange.com/quote/...',
+  '   Source Documents - one per line:   Name | Note | URL | Date',
+  '        e.g.   PR - Launch | Added Press Release | https://company.com/pr | 2026-06-09',
+  '',
+  'Tips:',
+  '   - Utilities > Start New Cycle clears the step checkmarks for a fresh week.',
+  '   - Utilities > Rescaffold / Restyle Tabs repairs headers, dropdowns and formatting.',
+  '   - Reference docs in the repo: PROCESS.md, KINTONE_FORMAT.md, ENGINEERING_HANDOFF.md.'
+];
+
+/** Create + populate the in-sheet "Workflow" (read-me) tab. */
+function ensureWorkflowTab_(force) {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName('Workflow');
+  var isNew = false;
+  if (!sh) { sh = ss.insertSheet('Workflow'); isNew = true; }
+  if (force || isNew || sh.getRange(1, 1).getValue() === '') {
+    sh.clear();
+    var rows = WORKFLOW_LINES.map(function (l) { return [l]; });
+    sh.getRange(1, 1, rows.length, 1).setValues(rows).setFontFamily('Calibri').setWrap(true);
+    sh.getRange(1, 1).setFontWeight('bold').setFontSize(13);
+    sh.setColumnWidth(1, 920);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/** Hover hints on the free-text capture headers so analysts use the right delimiter format. */
+function setCaptureHints_() {
+  var ss = SpreadsheetApp.getActive();
+  var webHint = 'One website per line:  Type | URL  (Type = Website or Exchange)\n' +
+    'e.g.  Website | https://company.com';
+  var sdHint = 'One source document per line:  Name | Note | URL | Date\n' +
+    'e.g.  PR - Launch | Added Press Release | https://company.com/pr | 2026-06-09';
+  getInternSheets_().forEach(function (sh) {
+    sh.getRange(1, 12).setNote(webHint);   // Website URLs (col L)
+    sh.getRange(1, 13).setNote(sdHint);    // Source Documents (col M)
+  });
+  var adds = ss.getSheetByName(TABS.adds.name);
+  if (adds) {
+    adds.getRange(1, 15).setNote(webHint); // Website URLs (col O)
+    adds.getRange(1, 16).setNote(sdHint);  // Source Documents (col P)
+  }
 }
 
 /** Create tab if missing; write header if new / blank / forced. */
@@ -2014,6 +2147,7 @@ function downloadKintoneUploadCsv() {
   downloadCsvDialog_(csv, 'Kintone_Upload_' +
     Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd') + '.csv',
     'Kintone Upload CSV');
+  markStep_('8. Download Kintone Upload CSV', 'CSV downloaded');
 }
 
 /* ================================ SHARED UTILITIES ================================== */
@@ -2043,6 +2177,7 @@ function logHistory_(action, source, details) {
   sh.appendRow([new Date(), action, source, details]);
   trimTab_(sh, HISTORY_MAX);
   formatRow_(sh, sh.getLastRow(), TABS.history.header.length);
+  if (STEP_BY_ACTION[action]) markStep_(STEP_BY_ACTION[action], details); // update Pipeline Status
 }
 
 function logStats_(rowAfterTimestamp) {
