@@ -102,3 +102,12 @@ clasp push                             # .claspignore limits this to Code.gs + a
   run logs a warning and the syntax gate still runs.
 - **Token stopped working** - a Google password change/security review can revoke
   the refresh token; re-run `clasp login` and update `CLASPRC_JSON`.
+- **`Error retrieving access token: Error: invalid_grant`** - the `CLASPRC_JSON`
+  refresh token is no longer valid. Re-run `clasp login`, copy the fresh
+  `~/.clasprc.json` into the `CLASPRC_JSON` secret, then re-run the deploy
+  (**Actions > Deploy Apps Script > Run workflow** on `production`). No new commit
+  is needed - the merged code redeploys with the restored token.
+  - *Recurring weekly?* Google expires refresh tokens after 7 days while the
+    OAuth consent screen is in **Testing**. Permanent fix: in Google Cloud
+    Console > **APIs & Services > OAuth consent screen**, set publishing status to
+    **In production** (or **Publish app**), then re-generate `CLASPRC_JSON` once.
