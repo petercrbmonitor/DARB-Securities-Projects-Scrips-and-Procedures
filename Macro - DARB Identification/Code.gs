@@ -54,8 +54,6 @@ var SORT_MOVE_OPTIONS = ['Watchlist', 'FR Exclude', 'Confirmed Exclude', 'Remove
 var MOVABLE = {
   'Sort': { dataCols: 10, company: 0, ticker: 1, tier: 6, sector: 7, analyst: 4,
     moveOptions: SORT_MOVE_OPTIONS, note: function (r) { return String(r[9] || ''); } },
-  'Review': { dataCols: 6, company: 0, ticker: 1, note: function (r) {
-    return 'From Review: ' + r[4] + ' vs "' + r[2] + '" (' + r[5] + ', ' + r[3] + ')'; } },
   'Excluded': { dataCols: 4, company: 0, ticker: 1, note: function (r) {
     return 'From Excluded: ' + r[3] + ' (' + r[2] + ')'; } },
   'Watchlist': { dataCols: 13, company: 0, ticker: 1, tier: 6, sector: 11, analyst: 4,
@@ -72,6 +70,9 @@ var ACTION_STATUS_OPTIONS = ['Complete', 'JF Approved Active', 'JF Approved Inac
   'JF to Confirm Active - New Profiles', 'JF to Review/Mark Inactive',
   'PS to Confirm Active - New Profiles', 'PS to Review/Mark Inactive',
   'TG to Mark PS Confirm - New Profiles', 'TG to Review', 'AlphaSense Macro (New Profiles)'];
+// Profiles surfaced by this macro are, by definition, new AlphaSense-macro profiles, so their
+// Action Status (Kintone Upload col D) is always this. Used as the staging default + build fallback.
+var ACTION_STATUS_DEFAULT = 'AlphaSense Macro (New Profiles)';
 
 /* Profile free-text fields are seeded with these labels so they are consistent regardless
  * of who fills them - interns write after the colon. */
@@ -103,7 +104,7 @@ var TAB_COLOR = {
   guide: '#8e44ad'        // operator guides (Pipeline Status, Workflow)
 };
 var TAB_ROLE = {
-  'Clean Pull': 'action', 'Sort': 'action', 'Review': 'action',
+  'Clean Pull': 'action', 'Sort': 'action',
   'Excluded': 'action',
   'Current DB': 'reference', 'Watchlist': 'reference', 'FR Exclude': 'reference',
   'Confirmed Exclude': 'reference', 'No Ticker Reference': 'reference',
@@ -115,7 +116,7 @@ var TAB_ROLE = {
 var AUDIT_TAB_NAMES = ['In DB Log', 'Stats', 'History Log'];
 /* Tabs retired by the redesign - auto-deleted on scaffold (drift now lives on Sort; the two
  * Kintone tabs are replaced by the single Kintone Upload tab). */
-var OBSOLETE_TABS = ['Attention - DB Drift', 'Kintone Profiles', 'Kintone Source Docs'];
+var OBSOLETE_TABS = ['Attention - DB Drift', 'Kintone Profiles', 'Kintone Source Docs', 'Review'];
 
 /* Operator dashboard: the numbered pipeline steps tracked on the "Pipeline Status" tab. */
 var PIPELINE_STEPS = [
@@ -170,9 +171,6 @@ var TABS = {
   sort: { name: 'Sort', header: ['Company Name (AlphaSense)', 'Ticker',
     'Review Assignement', 'Ticker Reviewed Date', 'Analyst', 'Inclusion Rationale',
     'If Add Recomended Tier', 'Recomended Sector', 'Source', 'Note', 'Select', 'Move To', 'Assign To'] },
-  review: { name: 'Review', header: ['Company Name (AlphaSense)', 'Ticker',
-    'Similar Existing Name', 'Source List', 'Match Type', 'Matched DB Ticker',
-    'Select', 'Move To'] },
   excluded: { name: 'Excluded', header: ['Company Name (AlphaSense)', 'Ticker',
     'Matched Source List', 'Match Type', 'Select', 'Move To'] },
   inDbLog: { name: 'In DB Log', header: ['Company Name (AlphaSense)', 'Ticker',
@@ -218,7 +216,6 @@ function onOpen() {
     .addItem('6. Process Reviews (backstop)', 'processReviews')
     .addSeparator()
     .addItem('Move selected rows between lists', 'moveSelected')
-    .addItem('Send all Review to Sort', 'consolidateToSort')
     .addSeparator()
     .addItem('7. Build Kintone Upload', 'buildKintoneUpload')
     .addItem('8. Download Kintone Upload CSV', 'downloadKintoneUploadCsv')
@@ -253,6 +250,7 @@ function scaffoldAll_(force) {
   refreshAddsValidations_();
   scaffoldMoveColumns_();
   setCaptureHints_();
+  setTabHelp_();
   colorTabs_();
 }
 
@@ -296,6 +294,20 @@ function markStep_(label, result) {
   }
 }
 
+/** Warn-and-confirm guard: if the immediately-prior pipeline step has not run this cycle,
+ *  ask before proceeding. Re-running an already-done step is never blocked. n = step number. */
+function stepGuard_(n) {
+  if (n <= 1) return true;
+  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.status.name);
+  if (!sh || sh.getLastRow() < n) return true;                 // status not ready -> don't block
+  if (String(sh.getRange(n, 4).getValue() || '').trim()) return true; // prior step done (sheet row n)
+  var ui = SpreadsheetApp.getUi();
+  return ui.alert('Run out of order?',
+    'Step ' + (n - 1) + ' "' + PIPELINE_STEPS[n - 2] + '" has not run this cycle.\n\n' +
+    'Continue with step ' + n + ' "' + PIPELINE_STEPS[n - 1] + '" anyway?',
+    ui.ButtonSet.YES_NO) === ui.Button.YES;
+}
+
 /** Utilities action: clear the Done-This-Cycle checks to start a fresh weekly cycle. */
 function startNewCycle() {
   var sh = SpreadsheetApp.getActive().getSheetByName(TABS.status.name);
@@ -313,9 +325,9 @@ var WORKFLOW_LINES = [
   '1. Refresh DB References - upload the latest Kintone export (.xlsx). Rebuilds Current DB and',
   '   merges the Watchlist (locally added rows kept; rows now Active graduate off).',
   '2. Import Pull Files - upload AlphaSense Search Summary exports (CSV/XLSX). Builds Clean Pull.',
-  '3. Run Crosscheck - sorts Clean Pull into Sort (new), Review (near-match) and Excluded',
-  '   (already tracked). DB-drift cases (name/ticker changed vs the DB) also land on Sort,',
-  '   tagged "DB Drift" in the Source column.',
+  '3. Run Crosscheck - sorts Clean Pull into Sort and Excluded (already tracked). New names',
+  '   AND near-matches both land on Sort: near-matches are tagged "Review" in the Source',
+  '   column (matched name in the Note); DB-drift cases tagged "DB Drift". No separate Review tab.',
   '4. Distribute Selected to Interns - on the Sort tab, tick Select, then either:',
   '     - set Assign To (an analyst) and run Distribute, to hand the row to a <Name> - Sort tab; or',
   '     - set Move To (Watchlist / FR Exclude / Confirmed Exclude / Remove) and run "Move selected',
@@ -371,6 +383,40 @@ function setCaptureHints_() {
     adds.getRange(1, 15).setNote(webHint); // Website URLs (col O)
     adds.getRange(1, 16).setNote(sdHint);  // Source Documents (col P)
   }
+}
+
+/* Per-tab "how to use this tab" guidance - shown as a hover note on the top-left header cell
+ * (hover the red corner). The Workflow tab holds the full end-to-end guide. */
+var TAB_HELP = {
+  'Sort': 'TRIAGE QUEUE (built by Run Crosscheck). New names AND near-matches live here.\n' +
+    '- Source "Review"   = near-match to something already tracked; read the Note, confirm new vs same.\n' +
+    '- Source "DB Drift" = name/ticker changed vs the DB; update the DB or move it to a list.\n' +
+    'Process a row: tick Select, then EITHER set Assign To + run Distribute (hand to an analyst),\n' +
+    'OR set Move To + run "Move selected rows between lists" (file it directly - no analyst).',
+  'Adds': 'STAGING for Kintone adds - one row per qualified profile (auto-created when an analyst\n' +
+    'routes a Sort row to "Add"). Fill in Website URLs / Source Documents, then run Build Kintone\n' +
+    'Upload. Imported? auto-ticks once the profile shows up in Current DB.',
+  'Config': 'SETTINGS - edit the Value column only; keep the Setting names unchanged.\n' +
+    '- Default analyst names: who gets a "<Name> - Sort" tab auto-created on scaffold.\n' +
+    '- Re-review tickers older than (days): tracked tickers older than this resurface onto Sort.\n' +
+    '- Resurface tickers with no reviewed date (Yes/No): include never-reviewed tickers too.',
+  'Kintone Upload': 'OUTPUT - the bulk-upload sheet (built by Build Kintone Upload). Column D\n' +
+    '(Action Status) is always "AlphaSense Macro (New Profiles)". Run Download Kintone Upload CSV,\n' +
+    'then import into Kintone. Do not hand-edit - rebuild instead.',
+  'Current DB': 'REFERENCE - rebuilt from the Kintone export by Refresh DB References; the source of\n' +
+    'truth for "already tracked". Do not hand-edit (it is overwritten on every refresh).',
+  'Watchlist': 'REFERENCE - names being monitored that are NOT yet in the DB. A row that becomes\n' +
+    'Active in the DB graduates off automatically on the next refresh, so adding an already-in-DB\n' +
+    'ticker here will not stick.'
+};
+
+/** Set the per-tab "how to use" hover note on each tab's top-left header cell. */
+function setTabHelp_() {
+  var ss = SpreadsheetApp.getActive();
+  Object.keys(TAB_HELP).forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (sh) sh.getRange(1, 1).setNote(TAB_HELP[name]);
+  });
 }
 
 /** Create tab if missing; write header if new / blank / forced. */
@@ -1302,6 +1348,7 @@ function importLegacyWatchlist(file) {
  */
 function runCrosscheck() {
   scaffoldAll_();
+  if (!stepGuard_(3)) return;
   var ss = SpreadsheetApp.getActive();
   var tickerMap = {};    // normalized ticker -> { source, name }
   var rootMap = {};      // ticker root       -> { ticker, name, source }
@@ -1376,7 +1423,7 @@ function runCrosscheck() {
   if (lr < 2) { toast_('Clean Pull is empty - run Build Clean Pull first.'); return; }
   var input = cp.getRange(2, 1, lr - 1, 4).getValues(); // Company | Ticker | CIK | ISIN
 
-  var sortRows = [], reviewRows = [], exclRows = [], considered = 0, drift = 0;
+  var sortRows = [], exclRows = [], considered = 0, drift = 0, nearMatch = 0;
   var resurrected = 0, resurrectedByTab = {};
   input.forEach(function (r) {
     var company = String(r[0] || '').trim();
@@ -1420,24 +1467,32 @@ function runCrosscheck() {
       drift++;
       return;
     }
-    if (nn && nameMap[nn] !== undefined) {                   // c. exact name
+    if (nn && nameMap[nn] !== undefined) {                   // c. exact name -> Sort (near-match)
       var nm = nameMap[nn];
-      reviewRows.push([company, ticker, nm.orig, nm.source, 'Exact name', nm.ticker]);
+      sortRows.push([company, ticker, '', '', '', '', '', '', 'Review',
+        'Near-match (exact name) vs "' + nm.orig + '" on ' + nm.source +
+        (nm.ticker ? ' (' + nm.ticker + ')' : '') + ' - confirm new vs same.']);
+      nearMatch++;
       return;
     }
     var fw = nn ? nn.split(' ')[0] : '';
-    if (fw.length >= 4 && firstWordIdx[fw]) {                // d. fuzzy name
+    if (fw.length >= 4 && firstWordIdx[fw]) {                // d. fuzzy name -> Sort (near-match)
       var m = fuzzyConfirm_(nn, firstWordIdx[fw]);
       if (m) {
-        reviewRows.push([company, ticker, m.orig, m.source, 'Fuzzy name', m.ticker]);
+        sortRows.push([company, ticker, '', '', '', '', '', '', 'Review',
+          'Near-match (fuzzy name) vs "' + m.orig + '" on ' + m.source +
+          (m.ticker ? ' (' + m.ticker + ')' : '') + ' - confirm new vs same.']);
+        nearMatch++;
         return;
       }
     }
-    var root = tickerRoot_(nt);                              // e. ticker root
+    var root = tickerRoot_(nt);                              // e. ticker root -> Sort (near-match)
     if (root.length >= 3 && rootMap[root] !== undefined && rootMap[root].ticker !== nt) {
       var rm = rootMap[root];
-      reviewRows.push([company, ticker, rm.name, rm.source,
-        'Ticker root - possible listing/ticker change', rm.ticker]);
+      sortRows.push([company, ticker, '', '', '', '', '', '', 'Review',
+        'Near-match (ticker root) vs "' + rm.name + '" on ' + rm.source +
+        (rm.ticker ? ' (' + rm.ticker + ')' : '') + ' - possible listing/ticker change.']);
+      nearMatch++;
       return;
     }
     sortRows.push([company, ticker, '', '', '', '', '', '', '', '']); // f. definitely new
@@ -1453,32 +1508,28 @@ function runCrosscheck() {
   forceMoveCheckboxes_(['Sort']);   // Select + Move To
   refreshSortValidations_();        // Assign To + Tier + Sector
 
-  var revSh = ensureTab_(TABS.review);
-  clearBody_(revSh);
-  if (reviewRows.length) revSh.getRange(2, 1, reviewRows.length, 6).setValues(reviewRows);
-  applyFormat_(revSh, TABS.review.header.length);
-
   var exSh = ensureTab_(TABS.excluded);
   clearBody_(exSh);
   if (exclRows.length) exSh.getRange(2, 1, exclRows.length, 4).setValues(exclRows);
   applyFormat_(exSh, TABS.excluded.header.length);
 
-  forceMoveCheckboxes_(['Review', 'Excluded']);
+  forceMoveCheckboxes_(['Excluded']);
 
   // Resurrected stale tickers now live on Sort - drop them from their reference list.
   Object.keys(resurrectedByTab).forEach(function (tn) {
     removeTickersFromRefTab_(tn, resurrectedByTab[tn]);
   });
 
-  logStats_(['Crosscheck', considered, sortRows.length, reviewRows.length,
+  logStats_(['Crosscheck', considered, sortRows.length, nearMatch,
     exclRows.length, '', '', '', '', '']);
   logHistory_('Run Crosscheck', 'Clean Pull', considered + ' in - ' + sortRows.length +
-    ' SORT (incl ' + resurrected + ' re-review, ' + drift + ' DB drift), ' +
-    reviewRows.length + ' REVIEW, ' + exclRows.length + ' EXCLUDED');
+    ' SORT (incl ' + resurrected + ' re-review, ' + drift + ' DB drift, ' + nearMatch +
+    ' near-match), ' + exclRows.length + ' EXCLUDED');
   toast_('Crosscheck: ' + sortRows.length + ' SORT' +
+    (nearMatch ? ' (incl ' + nearMatch + ' near-match)' : '') +
     (resurrected ? ' (' + resurrected + ' re-review)' : '') +
-    (drift ? ' (' + drift + ' DB drift)' : '') + ', ' + reviewRows.length +
-    ' REVIEW, ' + exclRows.length + ' EXCLUDED.');
+    (drift ? ' (' + drift + ' DB drift)' : '') + ', ' +
+    exclRows.length + ' EXCLUDED.');
 }
 
 /** Rewrite a reference list excluding rows whose normalized ticker is in tickerSet. */
@@ -1546,10 +1597,9 @@ function withDocLock_(fn) {
 }
 
 /* Public entry points (menu / on-sheet buttons) -> locked wrappers around the _impl_ body. */
-function distributeSelected() { return withDocLock_(distributeSelected_impl_); }
-function cleanupActiveTab()   { return withDocLock_(cleanupActiveTab_impl_); }
-function processReviews()     { return withDocLock_(processReviews_impl_); }
-function consolidateToSort()  { return withDocLock_(consolidateToSort_impl_); }
+function distributeSelected() { if (!stepGuard_(4)) return; return withDocLock_(distributeSelected_impl_); }
+function cleanupActiveTab()   { if (!stepGuard_(5)) return; return withDocLock_(cleanupActiveTab_impl_); }
+function processReviews()     { if (!stepGuard_(6)) return; return withDocLock_(processReviews_impl_); }
 function moveSelected()       { return withDocLock_(moveSelected_impl_); }
 
 /* ===================== STEP 3 - DISTRIBUTE, REVIEW & ROUTE ========================== */
@@ -1760,9 +1810,9 @@ function routeRow_(internSh, rowNum, r, assignment) {
       // Primary Business Name, AlphaSense Ticker, Profile Review - Action Status, CRBM Tier,
       // Pure-Play, Sector, Primary Business Description, Inclusion Rationale, Folder Name,
       // Website URLs, Source Documents. Description / Inclusion Rationale seeded with labels.
-      addsSh.appendRow([false, false, analyst, '*', company, pbn, ticker, '', tier, pureplay,
-        sector, withPrefix_(desc, DESC_PREFIX), withPrefix_(inclusion, RATIONALE_PREFIX), '',
-        websites, sourceDocs]);
+      addsSh.appendRow([false, false, analyst, '*', company, pbn, ticker, ACTION_STATUS_DEFAULT,
+        tier, pureplay, sector, withPrefix_(desc, DESC_PREFIX),
+        withPrefix_(inclusion, RATIONALE_PREFIX), '', websites, sourceDocs]);
       var ar = addsSh.getLastRow();
       addsSh.getRange(ar, 14).setFormula('=F' + ar);   // Folder Name mirrors Primary Business Name (col F)
       addsSh.getRange(ar, 1, 1, 2).insertCheckboxes(); // Imported? / Select = False
@@ -1799,50 +1849,7 @@ function withPrefix_(text, prefix) {
 }
 
 /**
- * Bulk-merge every Review row onto the Sort tab so they can be triaged alongside the
- * genuinely new names. Each row carries its match context in the Note column; the Review
- * tab is then cleared. (Excluded stays manual - those are confirmed already-tracked, so use
- * per-row Move To if any need to go to Sort. Attention drift cases already land on Sort
- * directly from the crosscheck.)
- */
-function consolidateToSort_impl_() {
-  var ss = SpreadsheetApp.getActive();
-  var names = ['Review'];
-  var today = new Date();
-  var moved = 0, dups = 0;
-  names.forEach(function (name) {
-    var cfg = MOVABLE[name];
-    var sh = ss.getSheetByName(name);
-    if (!sh) return;
-    var lr = sh.getLastRow();
-    if (lr < 2) return;
-    sh.getRange(2, 1, lr - 1, cfg.dataCols).getValues().forEach(function (r) {
-      var company = String(r[cfg.company] || '').trim();
-      var ticker = String(r[cfg.ticker] || '').trim();
-      if (!company && !ticker) return;
-      var ap = moveWriteDest_('Sort', {
-        company: company, ticker: ticker, source: name,
-        note: cfg.note ? cfg.note(r) : '',
-        tier: cfg.tier !== undefined ? r[cfg.tier] : '',
-        sector: cfg.sector !== undefined ? r[cfg.sector] : '',
-        analyst: ''
-      }, today);
-      if (ap) moved++; else dups++;
-    });
-    clearBody_(sh);
-    applyFormat_(sh, headerLenByName_(name));
-  });
-  forceMoveCheckboxes_(['Sort']);   // Select + Move To on the new Sort rows
-  refreshSortValidations_();
-  restyleTabs_([TABS.sort.name]);
-  logHistory_('Consolidate to Sort', 'Review', moved + ' row(s) sent to Sort' +
-    (dups ? ' - ' + dups + ' already on Sort (deduped)' : ''));
-  toast_('Sent ' + moved + ' Review row(s) to Sort for triage.' +
-    (dups ? ' ' + dups + ' already on Sort (deduped).' : ''));
-}
-
-/**
- * Reclassify rows from the ACTIVE list. On a movable tab (Sort, Review, Excluded,
+ * Reclassify rows from the ACTIVE list. On a movable tab (Sort, Excluded,
  * Watchlist, FR Exclude, Confirmed Exclude) tick Select, choose a
  * Move To destination, then run this. Each selected row is copied to the destination and
  * removed from the source.
@@ -1858,7 +1865,7 @@ function moveSelected_impl_() {
   var name = sh.getName();
   var cfg = MOVABLE[name];
   if (!cfg) {
-    toast_('Open a list with a Move To column (Sort, Review, Excluded, Watchlist, ' +
+    toast_('Open a list with a Move To column (Sort, Excluded, Watchlist, ' +
       'FR Exclude, Confirmed Exclude), tick rows, choose Move To, then run this.');
     return;
   }
@@ -1965,6 +1972,7 @@ function moveWriteDest_(dest, d, today) {
  */
 function buildKintoneUpload() {
   scaffoldAll_();
+  if (!stepGuard_(7)) return;
   var ss = SpreadsheetApp.getActive();
   var adds = ss.getSheetByName(TABS.adds.name);
   var lr = adds.getLastRow();
@@ -1988,8 +1996,8 @@ function buildKintoneUpload() {
     return nT ? !!dbTick[nT] : (nN ? !!dbName[nN] : false);
   }
 
-  // Build-time validation: a blank ticker breaks the Source Docs key-match and a blank
-  // Action Status imports an empty picklist value. Warn - with the offending names - first.
+  // Build-time validation: a blank ticker breaks the Source Docs key-match. Warn - with the
+  // offending names - first. (Action Status is auto-filled, so it is never blank in the output.)
   var problems = [];
   vals.forEach(function (r) {
     var imported = r[0] === true, sel = r[1] === true;
@@ -1999,7 +2007,6 @@ function buildKintoneUpload() {
     if (!anySel && inDb_(r)) return;                 // already in DB - will be skipped
     var issues = [];
     if (!String(r[6] || '').trim()) issues.push('blank ticker');
-    if (!String(r[7] || '').trim()) issues.push('blank Action Status');
     if (issues.length) problems.push(nm + ' (' + issues.join(', ') + ')');
   });
   if (problems.length) {
@@ -2007,8 +2014,8 @@ function buildKintoneUpload() {
     var resp = ui.alert('Kintone Upload - check these rows',
       problems.length + ' qualifying Add row(s) have issues that affect the Kintone import:\n\n' +
       problems.slice(0, 20).join('\n') + (problems.length > 20 ? '\n...' : '') +
-      '\n\nBlank ticker breaks the Source Documents key-match; blank Action Status imports ' +
-      'an empty value.\n\nBuild anyway?', ui.ButtonSet.YES_NO);
+      '\n\nBlank ticker breaks the Source Documents key-match.\n\nBuild anyway?',
+      ui.ButtonSet.YES_NO);
     if (resp !== ui.Button.YES) { toast_('Kintone build cancelled - fix the flagged rows.'); return; }
   }
 
@@ -2028,7 +2035,8 @@ function buildKintoneUpload() {
       return;
     }
 
-    var ticker = r[6], actionStatus = r[7] || '', tier = r[8], pureplay = r[9] || '',
+    var ticker = r[6], actionStatus = String(r[7] || '').trim() || ACTION_STATUS_DEFAULT,
+        tier = r[8], pureplay = r[9] || '',
         sector = r[10], desc = r[11], inclusion = r[12],
         folder = String(r[13] || '').trim() || pbn;
 
@@ -2142,6 +2150,7 @@ function downloadCsvDialog_(csv, fname, title) {
 }
 
 function downloadKintoneUploadCsv() {
+  if (!stepGuard_(8)) return;
   var csv = tabToCsv_(TABS.kintoneUpload.name, TABS.kintoneUpload.header.length);
   if (!csv) { toast_('Kintone Upload tab is empty - run Build Kintone Upload first.'); return; }
   downloadCsvDialog_(csv, 'Kintone_Upload_' +
