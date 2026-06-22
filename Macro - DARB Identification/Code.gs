@@ -72,6 +72,9 @@ var ACTION_STATUS_OPTIONS = ['Complete', 'JF Approved Active', 'JF Approved Inac
   'JF to Confirm Active - New Profiles', 'JF to Review/Mark Inactive',
   'PS to Confirm Active - New Profiles', 'PS to Review/Mark Inactive',
   'TG to Mark PS Confirm - New Profiles', 'TG to Review', 'AlphaSense Macro (New Profiles)'];
+// Profiles surfaced by this macro are, by definition, new AlphaSense-macro profiles, so their
+// Action Status (Kintone Upload col D) is always this. Used as the staging default + build fallback.
+var ACTION_STATUS_DEFAULT = 'AlphaSense Macro (New Profiles)';
 
 /* Profile free-text fields are seeded with these labels so they are consistent regardless
  * of who fills them - interns write after the colon. */
@@ -1760,9 +1763,9 @@ function routeRow_(internSh, rowNum, r, assignment) {
       // Primary Business Name, AlphaSense Ticker, Profile Review - Action Status, CRBM Tier,
       // Pure-Play, Sector, Primary Business Description, Inclusion Rationale, Folder Name,
       // Website URLs, Source Documents. Description / Inclusion Rationale seeded with labels.
-      addsSh.appendRow([false, false, analyst, '*', company, pbn, ticker, '', tier, pureplay,
-        sector, withPrefix_(desc, DESC_PREFIX), withPrefix_(inclusion, RATIONALE_PREFIX), '',
-        websites, sourceDocs]);
+      addsSh.appendRow([false, false, analyst, '*', company, pbn, ticker, ACTION_STATUS_DEFAULT,
+        tier, pureplay, sector, withPrefix_(desc, DESC_PREFIX),
+        withPrefix_(inclusion, RATIONALE_PREFIX), '', websites, sourceDocs]);
       var ar = addsSh.getLastRow();
       addsSh.getRange(ar, 14).setFormula('=F' + ar);   // Folder Name mirrors Primary Business Name (col F)
       addsSh.getRange(ar, 1, 1, 2).insertCheckboxes(); // Imported? / Select = False
@@ -1988,8 +1991,8 @@ function buildKintoneUpload() {
     return nT ? !!dbTick[nT] : (nN ? !!dbName[nN] : false);
   }
 
-  // Build-time validation: a blank ticker breaks the Source Docs key-match and a blank
-  // Action Status imports an empty picklist value. Warn - with the offending names - first.
+  // Build-time validation: a blank ticker breaks the Source Docs key-match. Warn - with the
+  // offending names - first. (Action Status is auto-filled, so it is never blank in the output.)
   var problems = [];
   vals.forEach(function (r) {
     var imported = r[0] === true, sel = r[1] === true;
@@ -1999,7 +2002,6 @@ function buildKintoneUpload() {
     if (!anySel && inDb_(r)) return;                 // already in DB - will be skipped
     var issues = [];
     if (!String(r[6] || '').trim()) issues.push('blank ticker');
-    if (!String(r[7] || '').trim()) issues.push('blank Action Status');
     if (issues.length) problems.push(nm + ' (' + issues.join(', ') + ')');
   });
   if (problems.length) {
@@ -2007,8 +2009,8 @@ function buildKintoneUpload() {
     var resp = ui.alert('Kintone Upload - check these rows',
       problems.length + ' qualifying Add row(s) have issues that affect the Kintone import:\n\n' +
       problems.slice(0, 20).join('\n') + (problems.length > 20 ? '\n...' : '') +
-      '\n\nBlank ticker breaks the Source Documents key-match; blank Action Status imports ' +
-      'an empty value.\n\nBuild anyway?', ui.ButtonSet.YES_NO);
+      '\n\nBlank ticker breaks the Source Documents key-match.\n\nBuild anyway?',
+      ui.ButtonSet.YES_NO);
     if (resp !== ui.Button.YES) { toast_('Kintone build cancelled - fix the flagged rows.'); return; }
   }
 
@@ -2028,7 +2030,8 @@ function buildKintoneUpload() {
       return;
     }
 
-    var ticker = r[6], actionStatus = r[7] || '', tier = r[8], pureplay = r[9] || '',
+    var ticker = r[6], actionStatus = String(r[7] || '').trim() || ACTION_STATUS_DEFAULT,
+        tier = r[8], pureplay = r[9] || '',
         sector = r[10], desc = r[11], inclusion = r[12],
         folder = String(r[13] || '').trim() || pbn;
 
