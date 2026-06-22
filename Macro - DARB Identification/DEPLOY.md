@@ -107,7 +107,13 @@ clasp push                             # .claspignore limits this to Code.gs + a
   `~/.clasprc.json` into the `CLASPRC_JSON` secret, then re-run the deploy
   (**Actions > Deploy Apps Script > Run workflow** on `production`). No new commit
   is needed - the merged code redeploys with the restored token.
-  - *Recurring weekly?* Google expires refresh tokens after 7 days while the
-    OAuth consent screen is in **Testing**. Permanent fix: in Google Cloud
-    Console > **APIs & Services > OAuth consent screen**, set publishing status to
-    **In production** (or **Publish app**), then re-generate `CLASPRC_JSON` once.
+  - *Recurring every ~7 days?* `clasp login` with no `--creds` uses clasp's
+    built-in OAuth client, whose refresh tokens Google expires after 7 days.
+    Permanent fix: use your **own** OAuth client. In Google Cloud Console >
+    **Google Auth Platform**: configure the consent screen (**Internal** for a
+    Workspace account, or **External** + **Publish app**), then **Clients >
+    Create client > Desktop app > Download JSON**. Run
+    `clasp login --creds <that file>`, then paste the new `~/.clasprc.json` into
+    `CLASPRC_JSON`. Internal/published clients have no 7-day token expiry, so the
+    deploy stops breaking. (The per-project `.clasp.json` file the CLI may ask
+    for is generated automatically in CI - you don't need it locally.)
