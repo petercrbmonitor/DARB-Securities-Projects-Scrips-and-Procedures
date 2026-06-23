@@ -159,11 +159,12 @@ var TABS = {
     'Primary Business Description', 'Inclusion Rationale', 'Folder Name',
     'Website URLs', 'Source Documents'] },
   /* Single merged Kintone bulk-upload tab - column order is the integration contract (matches
-     the KINTONE uPLOAD FORMAT template). Cols 1-10 = parent profile; 11-12 = Website subtable
-     (pink); 13-17 = Source Documents subtable (yellow). See KINTONE_FORMAT.md. */
+     the KINTONE uPLOAD FORMAT template). Cols 1-11 = parent profile (incl. Analyst, the assigned
+     reviewer); 12-13 = Website subtable (pink); 14-18 = Source Documents subtable (yellow).
+     See KINTONE_FORMAT.md. */
   kintoneUpload: { name: 'Kintone Upload', header: ['New record flag', 'Primary Business Name',
-    'AlphaSense Ticker', 'Profile Review - Action Status', 'CRBM Tier', 'Pure-Play', 'Sector',
-    'Primary Business Description', 'Inclusion Rationale', 'Folder Name',
+    'AlphaSense Ticker', 'Analyst', 'Profile Review - Action Status', 'CRBM Tier', 'Pure-Play',
+    'Sector', 'Primary Business Description', 'Inclusion Rationale', 'Folder Name',
     'Website Type', "Website URL's", 'Added to BOX', 'Source Document Name', 'Note Per SD',
     'Source URL', 'Date'] },
   cleanPull: { name: 'Clean Pull', header: ['Company Name (AlphaSense)',
@@ -200,7 +201,13 @@ var INTERN_WIDTH = INTERN_HEADER.length; // 17
  * seeded so their tabs always exist without manual creation - edit this list to add or
  * remove standing reviewers. Any other "<Name> - Sort" tab an operator creates is still
  * picked up automatically. */
-var DEFAULT_INTERNS = ['Peter', 'Tamara'];
+/* Exact Kintone user names - the Assign To / Analyst options. Must match Kintone verbatim
+ * (these become the "Analyst" value uploaded to Kintone). Edit here if the Kintone users change. */
+var ANALYST_OPTIONS = ['Ethan Guys', 'Isaac M', 'Mel Dapanas', 'Jaypee Ollos',
+  'Luciana Villarreal Romero', 'Jim', 'Kyle', 'Peter', 'Tamara', 'Product Team', 'Jacie Specht'];
+/* Standing intern tabs auto-created on scaffold. Empty = create "<Name> - Sort" tabs on demand
+ * (the first time a row is distributed to that analyst). */
+var DEFAULT_INTERNS = [];
 
 /* ================================ MENU / SCAFFOLDING ================================ */
 
@@ -397,12 +404,13 @@ var TAB_HELP = {
     'routes a Sort row to "Add"). Fill in Website URLs / Source Documents, then run Build Kintone\n' +
     'Upload. Imported? auto-ticks once the profile shows up in Current DB.',
   'Config': 'SETTINGS - edit the Value column only; keep the Setting names unchanged.\n' +
-    '- Default analyst names: who gets a "<Name> - Sort" tab auto-created on scaffold.\n' +
     '- Re-review tickers older than (days): tracked tickers older than this resurface onto Sort.\n' +
-    '- Resurface tickers with no reviewed date (Yes/No): include never-reviewed tickers too.',
-  'Kintone Upload': 'OUTPUT - the bulk-upload sheet (built by Build Kintone Upload). Column D\n' +
-    '(Action Status) is always "AlphaSense Macro (New Profiles)". Run Download Kintone Upload CSV,\n' +
-    'then import into Kintone. Do not hand-edit - rebuild instead.',
+    '- Resurface tickers with no reviewed date (Yes/No): include never-reviewed tickers too.\n' +
+    '(Analyst names live in the script ANALYST_OPTIONS list; a tab is created on first assign.)',
+  'Kintone Upload': 'OUTPUT - the bulk-upload sheet (built by Build Kintone Upload). The Profile\n' +
+    'Review - Action Status column is always "AlphaSense Macro (New Profiles)"; the Analyst column\n' +
+    'carries the assigned reviewer (exact Kintone name). Run Download Kintone Upload CSV, then\n' +
+    'import into Kintone. Do not hand-edit - rebuild instead.',
   'Current DB': 'REFERENCE - rebuilt from the Kintone export by Refresh DB References; the source of\n' +
     'truth for "already tracked". Do not hand-edit (it is overwritten on every refresh).',
   'Watchlist': 'REFERENCE - names being monitored that are NOT yet in the DB. A row that becomes\n' +
@@ -517,14 +525,22 @@ function internName_(sh) { return sh.getName().match(INTERN_RE)[1]; }
  *  New tabs get the canonical header + table styling; scaffoldInternSheets_ then adds the
  *  dropdowns and colorTabs_ tints them. Existing tabs are left untouched. */
 function ensureDefaultInternTabs_() {
+  DEFAULT_INTERNS.forEach(function (name) { ensureInternTab_(name); });
+}
+
+/** Create a "<Name> - Sort" tab if missing (standing tabs and on-demand at distribute time).
+ *  Returns the sheet. New tabs get the canonical header, styling and intern tint;
+ *  scaffoldInternSheets_ then adds the dropdowns. */
+function ensureInternTab_(name) {
   var ss = SpreadsheetApp.getActive();
-  DEFAULT_INTERNS.forEach(function (name) {
-    var tabName = name + ' - Sort';
-    if (ss.getSheetByName(tabName)) return;
-    var sh = ss.insertSheet(tabName);
-    sh.getRange(1, 1, 1, INTERN_WIDTH).setValues([INTERN_HEADER]);
-    applyFormat_(sh, INTERN_WIDTH);
-  });
+  var tabName = name + ' - Sort';
+  var sh = ss.getSheetByName(tabName);
+  if (sh) return sh;
+  sh = ss.insertSheet(tabName);
+  sh.getRange(1, 1, 1, INTERN_WIDTH).setValues([INTERN_HEADER]);
+  applyFormat_(sh, INTERN_WIDTH);
+  sh.setTabColor(TAB_COLOR.intern);
+  return sh;
 }
 
 function scaffoldInternSheets_(force) {
@@ -606,8 +622,7 @@ function refreshSortValidations_() {
   var n = lr - 1;
   sh.getRange(2, 7, n, 1).setDataValidation(listRule_(TIER_OPTIONS));
   sh.getRange(2, 8, n, 1).setDataValidation(listRule_(SECTOR_OPTIONS));
-  var interns = getInternSheets_().map(internName_);
-  if (interns.length) sh.getRange(2, 13, n, 1).setDataValidation(listRule_(interns)); // Assign To
+  sh.getRange(2, 13, n, 1).setDataValidation(listRule_(ANALYST_OPTIONS)); // Assign To
 }
 
 /** Dropdowns on the Adds tab: Action Status (H), CRBM Tier (I), Pure-Play (J), Sector (K);
@@ -1343,7 +1358,8 @@ function importLegacyWatchlist(file) {
  *   e. ticker root match (same symbol, other
  *      exchange suffix, root >= 3 chars)        -> REVIEW (Ticker root)
  *   f. otherwise                                -> SORT (definitely new)
- * Name matching also covers the hidden No Ticker Reference rows.
+ * Near-match (c/d/e) only considers Current DB records (incl. its hidden No-Ticker rows);
+ * Watchlist / FR Exclude / Confirmed Exclude are still exact-excluded but not fuzzy-matched.
  * ISIN matching activates automatically once the Kintone export includes an ISIN column.
  */
 function runCrosscheck() {
@@ -1371,11 +1387,13 @@ function runCrosscheck() {
   var resurfaceBlank = resurfaceBlank_();
   var tz = Session.getScriptTimeZone();
 
+  // nearMatch = include this list in the fuzzy name / ticker-root REVIEW check. Only Current DB
+  // qualifies (per request); the others still exact-exclude by ticker/ISIN but are not fuzzy-matched.
   var refDefs = [
-    { name: 'Current DB', isin: true, reviewable: false },
-    { name: 'Watchlist', isin: true, reviewable: true },
-    { name: 'FR Exclude', isin: false, reviewable: true },
-    { name: 'Confirmed Exclude', isin: false, reviewable: true }
+    { name: 'Current DB', isin: true, reviewable: false, nearMatch: true },
+    { name: 'Watchlist', isin: true, reviewable: true, nearMatch: false },
+    { name: 'FR Exclude', isin: false, reviewable: true, nearMatch: false },
+    { name: 'Confirmed Exclude', isin: false, reviewable: true, nearMatch: false }
   ];
   refDefs.forEach(function (def) {
     var sh = ss.getSheetByName(def.name);
@@ -1395,7 +1413,7 @@ function runCrosscheck() {
           };
         }
         var root = tickerRoot_(t);
-        if (root.length >= 3 && rootMap[root] === undefined) {
+        if (def.nearMatch && root.length >= 3 && rootMap[root] === undefined) {
           rootMap[root] = { ticker: t, name: n, source: def.name };
         }
       }
@@ -1405,16 +1423,17 @@ function runCrosscheck() {
           isinMap[isin] = { name: n, ticker: t, source: def.name };
         }
       }
-      if (n) addName_(n, def.name, t);
+      if (def.nearMatch && n) addName_(n, def.name, t);
     });
   });
 
-  // No-ticker names from the hidden reference tab (name matching only)
+  // No-ticker names from the hidden reference tab (name matching only). Per the Current-DB-only
+  // near-match rule, only include rows whose Source Bucket (col 2) is Current DB.
   var ntSh = ss.getSheetByName(TABS.noTicker.name);
   if (ntSh && ntSh.getLastRow() >= 2) {
     ntSh.getRange(2, 1, ntSh.getLastRow() - 1, 2).getValues().forEach(function (r) {
       var n = String(r[0] || '').trim();
-      if (n) addName_(n, String(r[1] || 'No Ticker') + ' (no ticker)', '');
+      if (n && /current db/i.test(String(r[1] || ''))) addName_(n, 'Current DB (no ticker)', '');
     });
   }
 
@@ -1616,10 +1635,6 @@ function distributeSelected_impl_() {
 
   var interns = {};
   getInternSheets_().forEach(function (sh) { interns[internName_(sh)] = sh; });
-  if (!Object.keys(interns).length) {
-    SpreadsheetApp.getUi().alert('No intern tabs found. Create a tab named "<Name> - Sort" first - it will be picked up automatically.');
-    return;
-  }
 
   var vals = sortSh.getRange(2, 1, lr - 1, 13).getValues();
   var today = new Date();
@@ -1629,8 +1644,8 @@ function distributeSelected_impl_() {
   vals.forEach(function (r, i) {
     if (r[10] !== true) return;                      // Select checkbox
     var who = String(r[12] || '').trim();            // Assign To
-    if (!who || !interns[who]) { skipped++; return; }
-    var sh = interns[who];
+    if (!who || (!interns[who] && ANALYST_OPTIONS.indexOf(who) < 0)) { skipped++; return; }
+    var sh = interns[who] || (interns[who] = ensureInternTab_(who)); // create the tab on demand
     // Intern row (17 cols): default Primary Business Name to the AlphaSense name and seed
     // the Description / Inclusion Rationale labels. Pure-Play, Website URLs and Source
     // Documents start blank for the analyst to fill.
@@ -2035,7 +2050,8 @@ function buildKintoneUpload() {
       return;
     }
 
-    var ticker = r[6], actionStatus = String(r[7] || '').trim() || ACTION_STATUS_DEFAULT,
+    var ticker = r[6], analyst = String(r[2] || '').trim(),  // Adds col C = Analyst
+        actionStatus = String(r[7] || '').trim() || ACTION_STATUS_DEFAULT,
         tier = r[8], pureplay = r[9] || '',
         sector = r[10], desc = r[11], inclusion = r[12],
         folder = String(r[13] || '').trim() || pbn;
@@ -2052,9 +2068,9 @@ function buildKintoneUpload() {
       var sd = b.sd || { name: '', note: '', url: '', date: '' };
       out.push([
         k === 0 ? '*' : '',                          // New record flag (first row of record only)
-        pbn, ticker, actionStatus, tier, pureplay, sector, desc, inclusion, folder, // parent (repeated)
+        pbn, ticker, analyst, actionStatus, tier, pureplay, sector, desc, inclusion, folder, // parent
         w.type || '', w.url || '',                   // pink: Website Type / Website URL's
-        b.sd ? 'Yes' : '', sd.name || '', sd.note || '', sd.url || '', sd.date || '' // yellow: Source Docs
+        b.sd ? 'No' : '', sd.name || '', sd.note || '', sd.url || '', sd.date || '' // yellow: Source Docs
       ]);
     });
     profiles++;

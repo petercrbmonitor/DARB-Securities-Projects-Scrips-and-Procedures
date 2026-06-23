@@ -4,7 +4,7 @@ How the DARB pipeline builds the **`Kintone Upload`** tab, and which tab/column 
 field. The column order on `Kintone Upload` is the integration contract with Kintone -
 **do not reorder or rename** without coordinating with the Kintone import.
 
-## The `Kintone Upload` tab (17 columns)
+## The `Kintone Upload` tab (18 columns)
 
 One tab, three colour groups (matching the `KINTONE uPLOAD FORMAT` template):
 
@@ -13,24 +13,30 @@ One tab, three colour groups (matching the `KINTONE uPLOAD FORMAT` template):
 | 1 | New record flag | parent |
 | 2 | Primary Business Name | parent |
 | 3 | AlphaSense Ticker | parent |
-| 4 | Profile Review - Action Status | parent |
-| 5 | CRBM Tier | parent |
-| 6 | Pure-Play | parent |
-| 7 | Sector | parent |
-| 8 | Primary Business Description | parent |
-| 9 | Inclusion Rationale | parent |
-| 10 | Folder Name | parent |
-| 11 | Website Type | 🩷 Website subtable |
-| 12 | Website URL's | 🩷 Website subtable |
-| 13 | Added to BOX | 💛 Source Documents subtable |
-| 14 | Source Document Name | 💛 Source Documents subtable |
-| 15 | Note Per SD | 💛 Source Documents subtable |
-| 16 | Source URL | 💛 Source Documents subtable |
-| 17 | Date | 💛 Source Documents subtable |
+| 4 | Analyst | parent |
+| 5 | Profile Review - Action Status | parent |
+| 6 | CRBM Tier | parent |
+| 7 | Pure-Play | parent |
+| 8 | Sector | parent |
+| 9 | Primary Business Description | parent |
+| 10 | Inclusion Rationale | parent |
+| 11 | Folder Name | parent |
+| 12 | Website Type | 🩷 Website subtable |
+| 13 | Website URL's | 🩷 Website subtable |
+| 14 | Added to BOX | 💛 Source Documents subtable |
+| 15 | Source Document Name | 💛 Source Documents subtable |
+| 16 | Note Per SD | 💛 Source Documents subtable |
+| 17 | Source URL | 💛 Source Documents subtable |
+| 18 | Date | 💛 Source Documents subtable |
+
+- **Analyst** (col 4) = the assigned reviewer, carried from the Adds tab. Must be an exact
+  Kintone user name (the `Assign To` dropdown is restricted to that list).
+- **Profile Review - Action Status** (col 5) is always `AlphaSense Macro (New Profiles)`.
+- **Added to BOX** (col 14) defaults to `No`.
 
 **Row layout per company:** the `New record flag` is `*` on the **first row only**; then one
 row per **Source Document** (yellow filled, pink blank), then one row per **Website/Exchange
-URL** (pink filled, yellow blank). Parent fields (cols 1-10) are repeated on every row of the
+URL** (pink filled, yellow blank). Parent fields (cols 1-11) are repeated on every row of the
 record (1:1 with the template).
 
 ## Data flow: Intern tab → Adds → Kintone Upload
@@ -62,15 +68,16 @@ routes "Add" rows to **Adds**; **Build Kintone Upload** formats Adds into the up
   carry the same free-text formats as the intern tab.
 
 ### Field mapping (Adds → Kintone Upload)
-Primary Business Name→2 · AlphaSense Ticker→3 · Profile Review - Action Status→4 ·
-CRBM Tier→5 · Pure-Play→6 · Sector→7 · Primary Business Description→8 · Inclusion Rationale→9 ·
-Folder Name→10 · Website URLs→(11,12) · Source Documents→(13-17, Added to BOX = "Yes").
+Analyst→4 · Primary Business Name→2 · AlphaSense Ticker→3 ·
+Profile Review - Action Status→5 (always `AlphaSense Macro (New Profiles)`) · CRBM Tier→6 ·
+Pure-Play→7 · Sector→8 · Primary Business Description→9 · Inclusion Rationale→10 ·
+Folder Name→11 · Website URLs→(12,13) · Source Documents→(14-18, Added to BOX = "No").
 
 ## Build behaviour
 - **Which rows build:** if any `Select` is ticked, only ticked rows; otherwise every row whose
   `Imported?` is unticked **and** that is not already in `Current DB`.
 - Rows already in `Current DB` are skipped and their `Imported?` auto-ticked (already in Kintone).
-- A pre-flight warns on qualifying rows with a blank ticker or blank Action Status.
+- A pre-flight warns on qualifying rows with a blank ticker (Action Status is auto-filled).
 - Output: **DARB Pipeline → Build Kintone Upload**, then **Download Kintone Upload CSV**.
 
 ## Sort triage (related change)

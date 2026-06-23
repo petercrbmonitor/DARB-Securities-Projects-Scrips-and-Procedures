@@ -15,7 +15,7 @@ shows which steps have run this cycle.
 | 4 | **Distribute Selected to Interns** | On **Sort**: tick `Select`, then set `Assign To` (analyst) and run — hands the row to a `<Name> - Sort` tab. |
 | 5 | **Clean-up This Intern Tab** | On your `<Name> - Sort` tab: set `Review Assignement` per row, then run to route each row to its destination. |
 | 6 | **Process Reviews** | Backstop sweep that routes eligible rows across **all** intern tabs. |
-| 7 | **Build Kintone Upload** | Formats qualified **Adds** into the single **Kintone Upload** tab (17 columns). |
+| 7 | **Build Kintone Upload** | Formats qualified **Adds** into the single **Kintone Upload** tab (18 columns, incl. **Analyst**). |
 | 8 | **Download Kintone Upload CSV** | Download and import into Kintone. |
 
 After step 8, tick `Imported?` on the Adds rows you imported (or let the next DB refresh
