@@ -51,8 +51,8 @@ var SORT_MOVE_OPTIONS = ['Watchlist', 'FR Exclude', 'Confirmed Exclude', 'Remove
  *   moveOptions        = Move To choices for this tab (defaults to MOVE_OPTIONS).
  *   note(rowArray)     = context string carried into the destination's Note.            */
 var MOVABLE = {
-  'Sort': { company: 0, ticker: 1, tier: 9, sector: 10, analyst: 6, selectCol: 3, moveCol: 4,
-    moveOptions: SORT_MOVE_OPTIONS, note: function (r) { return String(r[12] || ''); } },
+  'Sort': { company: 0, ticker: 1, tier: 10, sector: 11, analyst: 7, selectCol: 3, moveCol: 4,
+    moveOptions: SORT_MOVE_OPTIONS, note: function (r) { return String(r[13] || ''); } },
   'Excluded': { company: 0, ticker: 1, selectCol: 5, moveCol: 6, note: function (r) {
     return 'From Excluded: ' + r[3] + ' (' + r[2] + ')'; } },
   'Watchlist': { company: 0, ticker: 1, tier: 6, sector: 11, analyst: 4, selectCol: 14, moveCol: 15,
@@ -205,6 +205,9 @@ var AUDIT_TAB_NAMES = ['History Log'];
  * removed). */
 var OBSOLETE_TABS = ['Attention - DB Drift', 'Kintone Profiles', 'Kintone Source Docs', 'Review',
   'In DB Log', 'Stats'];
+/* Tabs fully regenerated from source (Crosscheck / Build). On a forced rescaffold, if the column
+ * layout changed, the stale body is cleared so old rows don't sit misaligned under new headers. */
+var REGEN_TABS = { 'Sort': true, 'Excluded': true, 'Clean Pull': true, 'Kintone Upload': true };
 
 /* The single "Dashboard" tab merges three former tabs: the pipeline-step status table (top),
  * the editable Settings block (middle), and the operating-workflow guide (bottom). */
@@ -267,9 +270,8 @@ var TABS = {
   cleanPull: { name: 'Clean Pull', header: ['Company Name (AlphaSense)',
     'AlphaSense Ticker', 'CIK', 'ISIN', 'MCAP ($)', 'Region', 'Domicile Country'] },
   sort: { name: 'Sort', header: ['Company Name (AlphaSense)', 'Ticker', 'Select', 'Move To',
-    'Review Assignement', 'Ticker Reviewed Date', 'Analyst', 'Inclusion Rationale',
-    'Tiering Rationale', 'If Add Recomended Tier', 'Recomended Sector', 'Source', 'Note',
-    'Assign To'] },
+    'Assign To', 'Review Assignement', 'Ticker Reviewed Date', 'Analyst', 'Inclusion Rationale',
+    'Tiering Rationale', 'If Add Recomended Tier', 'Recomended Sector', 'Source', 'Note'] },
   excluded: { name: 'Excluded', header: ['Company Name (AlphaSense)', 'Ticker',
     'Matched Source List', 'Match Type', 'Select', 'Move To'] },
   history: { name: 'History Log', header: ['Timestamp', 'Action', 'Source', 'Details'] }
@@ -623,6 +625,14 @@ function ensureTab_(def, forceHeader) {
   var isNew = false;
   if (!sh) { sh = ss.insertSheet(def.name); isNew = true; }
   if (forceHeader || isNew || sh.getRange(1, 1).getValue() === '') {
+    // Regenerated-from-source tabs (Sort, Excluded, Clean Pull, Kintone Upload): if the column
+    // layout changed, drop the stale body so old rows don't sit misaligned under the new headers
+    // (e.g. Source landing under the Tier dropdown). They are repopulated by Crosscheck / Build.
+    if (!isNew && REGEN_TABS[def.name] && sh.getLastRow() >= 2) {
+      var cur = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), def.header.length)).getValues()[0];
+      var changed = def.header.some(function (h, i) { return String(cur[i] || '') !== String(h); });
+      if (changed) clearBody_(sh);
+    }
     resetTabForHeader_(sh, def.header.length);  // wipe stale validations / old trailing headers
     sh.getRange(1, 1, 1, def.header.length).setValues([def.header]);
     applyFormat_(sh, def.header.length);
@@ -799,16 +809,16 @@ function migrateInternTab_(sh) {
   reorganizeInternTab_(sh);   // restratify pending vs routed + restore strikethrough
 }
 
-/** Dropdowns on the Sort tab: Tier (J), Sector (K), Assign To (N). */
+/** Dropdowns on the Sort tab: Assign To (E), Tier (K), Sector (L). */
 function refreshSortValidations_() {
   var sh = SpreadsheetApp.getActive().getSheetByName(TABS.sort.name);
   if (!sh) return;
   var lr = sh.getLastRow();
   if (lr < 2) return;
   var n = lr - 1;
-  sh.getRange(2, 10, n, 1).setDataValidation(listRule_(TIER_OPTIONS));
-  sh.getRange(2, 11, n, 1).setDataValidation(listRule_(SECTOR_OPTIONS));
-  sh.getRange(2, 14, n, 1).setDataValidation(listRule_(ANALYST_OPTIONS)); // Assign To
+  sh.getRange(2, 11, n, 1).setDataValidation(listRule_(TIER_OPTIONS));
+  sh.getRange(2, 12, n, 1).setDataValidation(listRule_(SECTOR_OPTIONS));
+  sh.getRange(2, 5, n, 1).setDataValidation(listRule_(ANALYST_OPTIONS)); // Assign To
 }
 
 /* ---- Tier/Sector rule engine: row-level helpers (reusable for live edits + bulk) ---- */
@@ -1815,8 +1825,8 @@ function runCrosscheck() {
           ? Utilities.formatDate(ex.reviewed, tz, 'yyyy-MM-dd') : 'no date';
         var rnote = 'Re-review: was on ' + ex.source + ', last reviewed ' + dstr +
           ' (> ' + thresholdDays + 'd)' + (ex.note ? ' - ' + ex.note : '');
-        sortRows.push([company, ticker, '', '', '', '', '', '', '', ex.tier || '', ex.sector || '',
-          ex.source, rnote, '']);                            //    stale -> back to Sort
+        sortRows.push([company, ticker, '', '', '', '', '', '', '', '', ex.tier || '', ex.sector || '',
+          ex.source, rnote]);                                //    stale -> back to Sort
         (resurrectedByTab[ex.source] = resurrectedByTab[ex.source] || {})[nt] = true;
         resurrected++;
         return;
@@ -1824,9 +1834,9 @@ function runCrosscheck() {
       exclRows.push([company, ticker, ex.source, 'Ticker']);
       var en = normName_(ex.name);
       if (nn && en && nn !== en && !fuzzyPair_(nn, en)) {    //    name drifted -> also surface on Sort
-        sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', 'DB Drift',
+        sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', '', 'DB Drift',
           'Name changed - same ticker as "' + ex.name + '" on ' + ex.source +
-          '. Update the DB name, or move to a list.', '']);
+          '. Update the DB name, or move to a list.']);
         drift++;
       }
       return;
@@ -1834,17 +1844,17 @@ function runCrosscheck() {
     if (isin && isinMap[isin] !== undefined) {               // b. same ISIN, new ticker
       var im = isinMap[isin];
       exclRows.push([company, ticker, im.source, 'ISIN']);
-      sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', 'DB Drift',
+      sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', '', 'DB Drift',
         'Ticker changed - same ISIN as ' + im.ticker + ' "' + im.name + '" on ' + im.source +
-        '. Update the DB ticker, or move to a list.', '']);
+        '. Update the DB ticker, or move to a list.']);
       drift++;
       return;
     }
     if (nn && nameMap[nn] !== undefined) {                   // c. exact name -> Sort (near-match)
       var nm = nameMap[nn];
-      sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', 'Review',
+      sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', '', 'Review',
         'Near-match (exact name) vs "' + nm.orig + '" on ' + nm.source +
-        (nm.ticker ? ' (' + nm.ticker + ')' : '') + ' - confirm new vs same.', '']);
+        (nm.ticker ? ' (' + nm.ticker + ')' : '') + ' - confirm new vs same.']);
       nearMatch++;
       return;
     }
@@ -1852,9 +1862,9 @@ function runCrosscheck() {
     if (fw.length >= 4 && firstWordIdx[fw]) {                // d. fuzzy name -> Sort (near-match)
       var m = fuzzyConfirm_(nn, firstWordIdx[fw]);
       if (m) {
-        sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', 'Review',
+        sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', '', 'Review',
           'Near-match (fuzzy name) vs "' + m.orig + '" on ' + m.source +
-          (m.ticker ? ' (' + m.ticker + ')' : '') + ' - confirm new vs same.', '']);
+          (m.ticker ? ' (' + m.ticker + ')' : '') + ' - confirm new vs same.']);
         nearMatch++;
         return;
       }
@@ -1862,13 +1872,13 @@ function runCrosscheck() {
     var root = tickerRoot_(nt);                              // e. ticker root -> Sort (near-match)
     if (root.length >= 3 && rootMap[root] !== undefined && rootMap[root].ticker !== nt) {
       var rm = rootMap[root];
-      sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', 'Review',
+      sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', '', 'Review',
         'Near-match (ticker root) vs "' + rm.name + '" on ' + rm.source +
-        (rm.ticker ? ' (' + rm.ticker + ')' : '') + ' - possible listing/ticker change.', '']);
+        (rm.ticker ? ' (' + rm.ticker + ')' : '') + ' - possible listing/ticker change.']);
       nearMatch++;
       return;
     }
-    sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', 'AS Pull', '', '']); // f. definitely new (from the AlphaSense pull)
+    sortRows.push([company, ticker, '', '', '', '', '', '', '', '', '', '', 'AS Pull', '']); // f. definitely new (from the AlphaSense pull)
   });
 
   // Rebuild outputs (script-owned tabs only)
@@ -1997,15 +2007,15 @@ function distributeSelected_impl_() {
 
   vals.forEach(function (r, i) {
     if (r[2] !== true) return;                       // Select checkbox (col C)
-    var who = String(r[13] || '').trim();            // Assign To (col N)
+    var who = String(r[4] || '').trim();             // Assign To (col E)
     if (!who || (!interns[who] && ANALYST_OPTIONS.indexOf(who) < 0)) { skipped++; return; }
     var sh = interns[who] || (interns[who] = ensureInternTab_(who)); // create the tab on demand
     // Intern row (18 cols): default Primary Business Name to the AlphaSense name and seed the
     // Description / Inclusion / Tiering Rationale labels. Pure-Play, Website URLs and Source
     // Documents start blank for the analyst to fill.
     sh.appendRow([r[0], r[1], '', '', who, r[0], DESC_PREFIX,
-      withPrefix_(r[7], RATIONALE_PREFIX), withPrefix_(r[8], TIER_RATIONALE_PREFIX), r[9] || '', r[10] || '', '',
-      '', '', r[11] || '', r[12] || '', today, due]);
+      withPrefix_(r[8], RATIONALE_PREFIX), withPrefix_(r[9], TIER_RATIONALE_PREFIX), r[10] || '', r[11] || '', '',
+      '', '', r[12] || '', r[13] || '', today, due]);
     formatRow_(sh, sh.getLastRow(), INTERN_WIDTH);
     touched[who] = sh;
     toDelete.push(i + 2);
@@ -2297,9 +2307,9 @@ function moveWriteDest_(dest, d, today) {
   if (dest === 'Sort') {
     var sortSh = ss.getSheetByName(TABS.sort.name);
     if (findExistingRow_(sortSh, 1, 2, nT, nN) > 0) return false;
-    // Sort: Company|Ticker|Select|Move To|RevAssign|RevDate|Analyst|Inclusion|Tiering|Tier|Sector|Source|Note|Assign To
-    sortSh.appendRow([d.company, d.ticker, false, '', '', '', '', '', '', d.tier || '', d.sector || '',
-      d.source, d.note || '', '']);
+    // Sort: Company|Ticker|Select|Move To|Assign To|RevAssign|RevDate|Analyst|Inclusion|Tiering|Tier|Sector|Source|Note
+    sortSh.appendRow([d.company, d.ticker, false, '', '', '', '', '', '', '', d.tier || '', d.sector || '',
+      d.source, d.note || '']);
     var sr = sortSh.getLastRow();
     sortSh.getRange(sr, 3).insertCheckboxes();               // Select (col C)
     formatRow_(sortSh, sr, TABS.sort.header.length);
