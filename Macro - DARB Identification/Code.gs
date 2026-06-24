@@ -100,7 +100,7 @@ var TAB_COLOR = {
   reference: '#127a7a',   // reference data (Current DB, Watchlist, exclude lists)
   output: '#0b8043',      // deliverables (Adds, Kintone Upload)
   audit: '#999999',       // logs / settings
-  intern: '#1aa39a',      // "<Name> - Sort" tabs
+  intern: '#1aa39a',      // per-analyst review tabs (named by first name)
   guide: '#8e44ad'        // operator guides (Pipeline Status, Workflow)
 };
 var TAB_ROLE = {
@@ -109,14 +109,16 @@ var TAB_ROLE = {
   'Current DB': 'reference', 'Watchlist': 'reference', 'FR Exclude': 'reference',
   'Confirmed Exclude': 'reference', 'No Ticker Reference': 'reference',
   'Adds': 'output', 'Kintone Upload': 'output',
-  'In DB Log': 'audit', 'Stats': 'audit', 'History Log': 'audit', 'Config': 'audit',
+  'History Log': 'audit', 'Config': 'audit',
   'Pipeline Status': 'guide', 'Workflow': 'guide'
 };
 /* Audit tabs the Utilities menu can hide (Config kept visible - it holds an editable setting). */
-var AUDIT_TAB_NAMES = ['In DB Log', 'Stats', 'History Log'];
+var AUDIT_TAB_NAMES = ['History Log'];
 /* Tabs retired by the redesign - auto-deleted on scaffold (drift now lives on Sort; the two
- * Kintone tabs are replaced by the single Kintone Upload tab). */
-var OBSOLETE_TABS = ['Attention - DB Drift', 'Kintone Profiles', 'Kintone Source Docs', 'Review'];
+ * Kintone tabs are replaced by the single Kintone Upload tab; In DB Log / Stats audit tabs
+ * removed). */
+var OBSOLETE_TABS = ['Attention - DB Drift', 'Kintone Profiles', 'Kintone Source Docs', 'Review',
+  'In DB Log', 'Stats'];
 
 /* Operator dashboard: the numbered pipeline steps tracked on the "Pipeline Status" tab. */
 var PIPELINE_STEPS = [
@@ -174,10 +176,6 @@ var TABS = {
     'If Add Recomended Tier', 'Recomended Sector', 'Source', 'Note', 'Select', 'Move To', 'Assign To'] },
   excluded: { name: 'Excluded', header: ['Company Name (AlphaSense)', 'Ticker',
     'Matched Source List', 'Match Type', 'Select', 'Move To'] },
-  inDbLog: { name: 'In DB Log', header: ['Company Name (AlphaSense)', 'Ticker',
-    'Intern', 'Date'] },
-  stats: { name: 'Stats', header: ['Timestamp', 'Run Type', 'Input', 'Sort', 'Review',
-    'Excluded', 'Add', 'Watchlist', 'FR Exclude', 'Confirmed Exclude', 'In DB'] },
   history: { name: 'History Log', header: ['Timestamp', 'Action', 'Source', 'Details'] },
   config: { name: 'Config', header: ['Setting', 'Value'] },
   status: { name: 'Pipeline Status', header: ['Step', 'Last Run', 'Result', 'Done This Cycle'] }
@@ -197,16 +195,21 @@ var INTERN_HEADER = ['Company Name (AlphaSense)', 'Ticker', 'Review Assignement'
   'Website URLs', 'Source Documents', 'Source', 'Note', 'Date Assigned', 'Due Date'];
 var INTERN_WIDTH = INTERN_HEADER.length; // 17
 
-/* Intern tabs are auto-detected by the "<Name> - Sort" convention, but these names are
- * seeded so their tabs always exist without manual creation - edit this list to add or
- * remove standing reviewers. Any other "<Name> - Sort" tab an operator creates is still
- * picked up automatically. */
-/* Exact Kintone user names - the Assign To / Analyst options. Must match Kintone verbatim
- * (these become the "Analyst" value uploaded to Kintone). Edit here if the Kintone users change. */
+/* Exact Kintone user names - the Assign To options and the "Analyst" value uploaded to Kintone.
+ * Must match Kintone verbatim. Edit here if the Kintone users change. */
 var ANALYST_OPTIONS = ['Ethan Guys', 'Isaac M', 'Mel Dapanas', 'Jaypee Ollos',
   'Luciana Villarreal Romero', 'Jim', 'Kyle', 'Peter', 'Tamara', 'Product Team', 'Jacie Specht'];
-/* Standing intern tabs auto-created on scaffold. Empty = create "<Name> - Sort" tabs on demand
- * (the first time a row is distributed to that analyst). */
+/* Per-analyst review tabs are named by FIRST NAME (e.g. "Peter", "Ethan"); the full Kintone name
+ * is carried in each row's Analyst column. ANALYST_BY_FIRST maps a tab's first name back to the
+ * full Kintone name (first names must stay unique across ANALYST_OPTIONS). */
+function analystFirst_(name) { return String(name).trim().split(/\s+/)[0]; }
+var ANALYST_BY_FIRST = (function () {
+  var m = {};
+  ANALYST_OPTIONS.forEach(function (n) { m[analystFirst_(n)] = n; });
+  return m;
+})();
+/* Standing review tabs auto-created on scaffold. Empty = create a "<First name>" tab on demand
+ * the first time a row is distributed to that analyst. */
 var DEFAULT_INTERNS = [];
 
 /* ================================ MENU / SCAFFOLDING ================================ */
@@ -226,6 +229,7 @@ function onOpen() {
     .addSeparator()
     .addItem('7. Build Kintone Upload', 'buildKintoneUpload')
     .addItem('8. Download Kintone Upload CSV', 'downloadKintoneUploadCsv')
+    .addItem('Clear Adds (after Kintone import)', 'clearAdds')
     .addSeparator()
     .addSubMenu(ui.createMenu('Utilities')
       .addItem('Build Clean Pull (manual rebuild)', 'buildCleanPull')
@@ -247,6 +251,7 @@ function rescaffold() {
 
 function scaffoldAll_(force) {
   removeObsoleteTabs_();
+  migrateInternTabNames_();
   Object.keys(TABS).forEach(function (k) { ensureTab_(TABS[k], force === true); });
   seedConfig_();
   seedStatus_();
@@ -336,16 +341,17 @@ var WORKFLOW_LINES = [
   '   AND near-matches both land on Sort: near-matches are tagged "Review" in the Source',
   '   column (matched name in the Note); DB-drift cases tagged "DB Drift". No separate Review tab.',
   '4. Distribute Selected to Interns - on the Sort tab, tick Select, then either:',
-  '     - set Assign To (an analyst) and run Distribute, to hand the row to a <Name> - Sort tab; or',
+  '     - set Assign To (an analyst) and run Distribute, to hand the row to that analyst (a review tab named by first name); or',
   '     - set Move To (Watchlist / FR Exclude / Confirmed Exclude / Remove) and run "Move selected',
   '       rows between lists" to file it directly - no analyst needed (e.g. an obvious non-DARB name).',
-  '5. Clean-up This Intern Tab - open your <Name> - Sort tab, set Review Assignement per row',
+  '5. Clean-up This Intern Tab - open your review tab (your first name), set Review Assignement per row',
   '   (Add / Watchlist / FR Exclude / Confirmed Exclude / In DB), then run to route them.',
   '6. Process Reviews - backstop sweep that routes eligible rows across ALL intern tabs.',
   '7. Build Kintone Upload - formats qualified Adds into the single "Kintone Upload" tab.',
   '8. Download Kintone Upload CSV - download it and import into Kintone.',
+  '   After importing, run "Clear Adds" to empty the Adds tab for the next batch.',
   '',
-  'Analyst capture formats (on your <Name> - Sort tab):',
+  'Analyst capture formats (on your review tab):',
   '   Website URLs - one per line:   Type | URL',
   '        e.g.   Website | https://company.com        Exchange | https://exchange.com/quote/...',
   '   Source Documents - one per line:   Name | Note | URL | Date',
@@ -511,29 +517,29 @@ function isStale_(reviewed, thresholdDays, resurfaceBlank) {
   return (Date.now() - d.getTime()) / 86400000 > thresholdDays;
 }
 
-/** Intern tabs are detected by "<Name> - Sort" - never hardcode names. */
+/** Review tabs are named by analyst first name and detected via ANALYST_BY_FIRST. */
 function getInternSheets_() {
   return SpreadsheetApp.getActive().getSheets().filter(function (s) {
-    var n = s.getName();
-    return INTERN_RE.test(n) && n.indexOf(RAW_PREFIX) !== 0;
+    return ANALYST_BY_FIRST.hasOwnProperty(s.getName());   // tabs are named by analyst first name
   });
 }
 
-function internName_(sh) { return sh.getName().match(INTERN_RE)[1]; }
+/** The full Kintone analyst name for a review tab (tabs are named by first name). */
+function internName_(sh) { var n = sh.getName(); return ANALYST_BY_FIRST[n] || n; }
 
-/** Ensure a "<Name> - Sort" tab exists for each standing reviewer in DEFAULT_INTERNS.
+/** Ensure a "<First name>" review tab exists for each standing reviewer in DEFAULT_INTERNS.
  *  New tabs get the canonical header + table styling; scaffoldInternSheets_ then adds the
  *  dropdowns and colorTabs_ tints them. Existing tabs are left untouched. */
 function ensureDefaultInternTabs_() {
   DEFAULT_INTERNS.forEach(function (name) { ensureInternTab_(name); });
 }
 
-/** Create a "<Name> - Sort" tab if missing (standing tabs and on-demand at distribute time).
- *  Returns the sheet. New tabs get the canonical header, styling and intern tint;
- *  scaffoldInternSheets_ then adds the dropdowns. */
+/** Create a "<First name>" review tab if missing (standing tabs and on-demand at distribute time).
+ *  Accepts a full or first name. Returns the sheet. New tabs get the canonical header, styling
+ *  and intern tint; scaffoldInternSheets_ then adds the dropdowns. */
 function ensureInternTab_(name) {
   var ss = SpreadsheetApp.getActive();
-  var tabName = name + ' - Sort';
+  var tabName = analystFirst_(name);
   var sh = ss.getSheetByName(tabName);
   if (sh) return sh;
   sh = ss.insertSheet(tabName);
@@ -541,6 +547,20 @@ function ensureInternTab_(name) {
   applyFormat_(sh, INTERN_WIDTH);
   sh.setTabColor(TAB_COLOR.intern);
   return sh;
+}
+
+/** One-time migration: rename legacy "<Name> - Sort" tabs to just the analyst's first name. */
+function migrateInternTabNames_() {
+  var ss = SpreadsheetApp.getActive();
+  ss.getSheets().forEach(function (s) {
+    var n = s.getName();
+    if (n.indexOf(RAW_PREFIX) === 0) return;
+    var m = n.match(INTERN_RE);                       // "<Name> - Sort"
+    if (!m) return;
+    var first = analystFirst_(m[1]);
+    if (first === n || ss.getSheetByName(first)) return;  // already renamed, or target name taken
+    s.setName(first);
+  });
 }
 
 function scaffoldInternSheets_(force) {
@@ -741,7 +761,7 @@ function headerLenByName_(name) {
   for (var i = 0; i < keys.length; i++) {
     if (TABS[keys[i]].name === name) return TABS[keys[i]].header.length;
   }
-  return INTERN_RE.test(name) ? INTERN_WIDTH : null;
+  return ANALYST_BY_FIRST.hasOwnProperty(name) ? INTERN_WIDTH : null;
 }
 
 /** Re-apply table styling to a set of tabs by name (refreshes filter + banding extent
@@ -1539,8 +1559,6 @@ function runCrosscheck() {
     removeTickersFromRefTab_(tn, resurrectedByTab[tn]);
   });
 
-  logStats_(['Crosscheck', considered, sortRows.length, nearMatch,
-    exclRows.length, '', '', '', '', '']);
   logHistory_('Run Crosscheck', 'Clean Pull', considered + ' in - ' + sortRows.length +
     ' SORT (incl ' + resurrected + ' re-review, ' + drift + ' DB drift, ' + nearMatch +
     ' near-match), ' + exclRows.length + ' EXCLUDED');
@@ -1596,7 +1614,7 @@ function fuzzyConfirm_(candNorm, entries) {
 /* ===================== CONCURRENCY - DOCUMENT LOCK ================================== */
 
 /* The routing / move / distribute actions append to shared tabs (Watchlist, Adds,
- * FR / Confirmed Exclude, In DB Log) one row at a time, and the duplicate guard
+ * FR / Confirmed Exclude) one row at a time, and the duplicate guard
  * (findExistingRow_ then appendRow) is a check-then-act. Two interns running Clean-up at
  * the same time could interleave those appends and double-create a row. withDocLock_
  * serialises these entry points on a document-wide lock. The _holdingDocLock flag
@@ -1675,20 +1693,18 @@ function cleanupActiveTab_impl_() {
   scaffoldAll_();
   var sh = SpreadsheetApp.getActiveSheet();
   var name = sh.getName();
-  if (!INTERN_RE.test(name) || name.indexOf(RAW_PREFIX) === 0) {
-    toast_('Open an intern "<Name> - Sort" tab, then run Clean-up.');
+  if (!ANALYST_BY_FIRST.hasOwnProperty(name)) {
+    toast_('Open an analyst review tab (named by first name), then run Clean-up.');
     return;
   }
   var counts = { 'Add': 0, 'Watchlist': 0, 'FR Exclude': 0, 'Confirmed Exclude': 0, 'In DB': 0 };
   var skipped = routeSheetRows_(sh, counts);
   reorganizeInternTab_(sh);
   scaffoldInternSheets_();
-  restyleTabs_(['Watchlist', 'FR Exclude', 'Confirmed Exclude', TABS.adds.name, TABS.inDbLog.name]);
+  restyleTabs_(['Watchlist', 'FR Exclude', 'Confirmed Exclude', TABS.adds.name]);
   forceMoveCheckboxes_(['Watchlist', 'FR Exclude', 'Confirmed Exclude']);
   var total = counts['Add'] + counts['Watchlist'] + counts['FR Exclude'] +
     counts['Confirmed Exclude'] + counts['In DB'];
-  logStats_(['Clean-up: ' + name, '', '', '', '', '', counts['Add'], counts['Watchlist'],
-    counts['FR Exclude'], counts['Confirmed Exclude'], counts['In DB']]);
   logHistory_('Clean-up This Tab', name, total + ' routed' +
     (counts._dups ? ' - ' + counts._dups + ' already present (deduped)' : '') +
     (skipped ? ' - ' + skipped + ' skipped (incomplete)' : ''));
@@ -1707,10 +1723,8 @@ function processReviews_impl_() {
     reorganizeInternTab_(sh);
   });
   scaffoldInternSheets_();
-  restyleTabs_(['Watchlist', 'FR Exclude', 'Confirmed Exclude', TABS.adds.name, TABS.inDbLog.name]);
+  restyleTabs_(['Watchlist', 'FR Exclude', 'Confirmed Exclude', TABS.adds.name]);
   forceMoveCheckboxes_(['Watchlist', 'FR Exclude', 'Confirmed Exclude']);
-  logStats_(['Process Reviews', '', '', '', '', '', counts['Add'], counts['Watchlist'],
-    counts['FR Exclude'], counts['Confirmed Exclude'], counts['In DB']]);
   logHistory_('Process Reviews', 'All intern tabs',
     'Add ' + counts['Add'] + ', Watchlist ' + counts['Watchlist'] +
     ', FR Exclude ' + counts['FR Exclude'] + ', Confirmed Exclude ' + counts['Confirmed Exclude'] +
@@ -1843,9 +1857,7 @@ function routeRow_(internSh, rowNum, r, assignment) {
       }
     }
   } else if (assignment === 'In DB') {
-    var logSh = ss.getSheetByName(TABS.inDbLog.name);  // audit log - always append
-    logSh.appendRow([company, ticker, internName_(internSh), today]);
-    formatRow_(logSh, logSh.getLastRow(), 4);
+    // Already in Current DB - no list to append; the row is struck through below.
   }
 
   internSh.getRange(rowNum, 4).setValue(today);
@@ -2188,8 +2200,7 @@ function addBusinessDays_(d, n) {
   return r;
 }
 
-var HISTORY_MAX = 100;   // keep only the most recent N rows on these audit tabs
-var STATS_MAX = 60;
+var HISTORY_MAX = 100;   // keep only the most recent N rows on the History Log
 
 /** Keep a tab to its last maxRows data rows (trims oldest). */
 function trimTab_(sh, maxRows) {
@@ -2205,11 +2216,25 @@ function logHistory_(action, source, details) {
   if (STEP_BY_ACTION[action]) markStep_(STEP_BY_ACTION[action], details); // update Pipeline Status
 }
 
-function logStats_(rowAfterTimestamp) {
-  var sh = ensureTab_(TABS.stats);
-  sh.appendRow([new Date()].concat(rowAfterTimestamp));
-  trimTab_(sh, STATS_MAX);
-  formatRow_(sh, sh.getLastRow(), TABS.stats.header.length);
+/** Wipe the Adds tab body after a Kintone import (header kept). Asks for confirmation. */
+function clearAdds() { return withDocLock_(clearAdds_impl_); }
+function clearAdds_impl_() {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(TABS.adds.name);
+  if (!sh) { toast_('No Adds tab.'); return; }
+  var lr = sh.getLastRow();
+  if (lr < 2) { toast_('Adds is already empty.'); return; }
+  var n = lr - 1, ui = SpreadsheetApp.getUi();
+  var resp = ui.alert('Clear Adds?',
+    'Delete all ' + n + ' row(s) from the Adds tab? Do this only after importing them to Kintone.',
+    ui.ButtonSet.YES_NO);
+  if (resp !== ui.Button.YES) return;
+  var f = sh.getFilter();
+  if (f) f.remove();
+  sh.deleteRows(2, n);
+  restyleTabs_([TABS.adds.name]);
+  logHistory_('Clear Adds', TABS.adds.name, n + ' row(s) cleared');
+  toast_('Cleared ' + n + ' row(s) from Adds.');
 }
 
 function toast_(msg) {

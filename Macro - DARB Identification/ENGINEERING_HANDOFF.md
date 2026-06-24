@@ -169,7 +169,7 @@ Read in this order:
 
 - **Watchlist merge (Refresh):** Current DB is a full overwrite from the Kintone export; Watchlist is a MERGE - export rows are authoritative, locally-routed/pasted rows not in the export are preserved, and rows now Active in the DB graduate off. Two populations coexist on Watchlist: ~382 from the DB import (rebuilt each refresh) and 500+ legacy rows loaded once via the legacy import.
 - **Stale-ticker re-review (Crosscheck):** an exact-ticker match against Watchlist / FR Exclude / Confirmed Exclude whose `Ticker Reviewed Date` is older than the Config threshold (default 365 days) is sent back to Sort and removed from its list. Current DB is exempt. Blank reviewed dates obey the "Resurface tickers with no reviewed date" Config flag (default No). This is idempotent.
-- **Dedup-on-route:** `routeRow_` and `moveWriteDest_` use `findExistingRow_` (ticker first, name fallback) to avoid duplicate rows/profiles on Watchlist/FR/Confirmed/Adds/Sort. In DB Log is an audit log and always appends.
+- **Dedup-on-route:** `routeRow_` and `moveWriteDest_` use `findExistingRow_` (ticker first, name fallback) to avoid duplicate rows/profiles on Watchlist/FR/Confirmed/Adds/Sort. An `In DB` assignment writes nothing (already in Current DB); the row is struck through.
 - **Intern-tab self-heal:** intern tabs detect a stale header and migrate row layout automatically. Do not change `INTERN_HEADER` order without updating `migrateInternRow_` and the index contract.
 - **Two-table Kintone export:** URLs and Source Documents are separate Kintone subtables and must stay separate output tabs/CSVs. Profiles import first (creates records + URL subtable), then Source Docs (keyed by AlphaSense Ticker + Primary Business Name).
 
