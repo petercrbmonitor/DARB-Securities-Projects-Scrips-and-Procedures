@@ -41,10 +41,11 @@ record (1:1 with the template).
 
 ## Data flow: Intern tab → Adds → Kintone Upload
 
-Analysts capture everything on their `<Name> - Sort` tab; **Clean-up / Process Reviews**
-routes "Add" rows to **Adds**; **Build Kintone Upload** formats Adds into the upload tab.
+Analysts capture everything on their review tab (named by first name, e.g. `Peter`);
+**Clean-up / Process Reviews** routes "Add" rows to **Adds**; **Build Kintone Upload** formats
+Adds into the upload tab.
 
-### Intern tab (`<Name> - Sort`) columns
+### Review tab (`<first name>`) columns
 `Company Name (AlphaSense)` · `Ticker` · `Review Assignement` · `Ticker Reviewed Date` ·
 `Analyst` · `Primary Business Name` · `Primary Business Description` · `Inclusion Rationale` ·
 `If Add Recomended Tier` · `Recomended Sector` · `Pure-Play` · `Website URLs` ·

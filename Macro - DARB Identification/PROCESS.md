@@ -11,15 +11,15 @@ shows which steps have run this cycle.
 |---|-------------|--------------|
 | 1 | **Refresh DB References** | Upload the latest Kintone export (`.xlsx`). Rebuilds **Current DB**; merges **Watchlist** (locally added rows kept; rows now Active graduate off). |
 | 2 | **Import Pull Files** | Upload AlphaSense Search Summary exports (CSV/XLSX). Builds **Clean Pull**. |
-| 3 | **Run Crosscheck** | Classifies Clean Pull into **Sort** (new), **Review** (near-match), **Excluded** (already tracked). DB-drift cases (name/ticker changed vs the DB) also land on **Sort**, tagged `DB Drift`. |
-| 4 | **Distribute Selected to Interns** | On **Sort**: tick `Select`, then set `Assign To` (analyst) and run — hands the row to a `<Name> - Sort` tab. |
-| 5 | **Clean-up This Intern Tab** | On your `<Name> - Sort` tab: set `Review Assignement` per row, then run to route each row to its destination. |
+| 3 | **Run Crosscheck** | Classifies Clean Pull into **Sort** (new), **Review** (near-match to **Current DB** only), **Excluded** (already tracked). DB-drift cases (name/ticker changed vs the DB) also land on **Sort**, tagged `DB Drift`. |
+| 4 | **Distribute Selected to Interns** | On **Sort**: tick `Select`, then set `Assign To` (analyst) and run — hands the row to that analyst's review tab (named by first name, e.g. `Peter`; created on first assign). |
+| 5 | **Clean-up This Intern Tab** | On your review tab (your first name): set `Review Assignement` per row, then run to route each row to its destination. |
 | 6 | **Process Reviews** | Backstop sweep that routes eligible rows across **all** intern tabs. |
 | 7 | **Build Kintone Upload** | Formats qualified **Adds** into the single **Kintone Upload** tab (18 columns, incl. **Analyst**). |
 | 8 | **Download Kintone Upload CSV** | Download and import into Kintone. |
 
-After step 8, tick `Imported?` on the Adds rows you imported (or let the next DB refresh
-auto-mark them once they appear in Current DB).
+After step 8, run **Clear Adds (after Kintone import)** to empty the Adds tab for the next batch.
+(Alternatively, tick `Imported?` on the rows you imported to keep them but skip them on the next build.)
 
 ## Triaging from Sort (no analyst needed)
 Sort has both an **Assign To** column and a **Move To** column. For a row that doesn't need
@@ -28,7 +28,7 @@ analyst research (e.g. an obvious non-DARB name), tick `Select`, set **Move To**
 between lists** — it files the row directly. `Send all Review to Sort` bulk-moves the Review
 tab onto Sort for triage.
 
-## Analyst capture formats (`<Name> - Sort` tabs)
+## Analyst capture formats (review tabs)
 Hover the column headers for a reminder. One entry per line:
 
 - **Website URLs** — `Type | URL`
@@ -37,14 +37,14 @@ Hover the column headers for a reminder. One entry per line:
 - **Source Documents** — `Name | Note | URL | Date`
   - `PR - Launch | Added Press Release | https://company.com/pr | 2026-06-09`
 
-These flow into the Kintone Upload tab's Website subtable (cols 11-12) and Source Documents
-subtable (cols 13-17). See `KINTONE_FORMAT.md` for the full column contract.
+These flow into the Kintone Upload tab's Website subtable (cols 12-13) and Source Documents
+subtable (cols 14-18). See `KINTONE_FORMAT.md` for the full column contract.
 
 ## Tracking progress
 - **Pipeline Status** tab — one row per step with **Last Run**, **Result**, and a ✓ under
   **Done This Cycle**, updated automatically as you run each step.
 - **Utilities → Start New Cycle** — clears the ✓ marks to begin a fresh week.
-- **History Log** / **Stats** tabs — full audit trail and per-run counts.
+- **History Log** tab — full audit trail of every run.
 
 ## Utilities
 - **Build Clean Pull** - rebuild Clean Pull from the RAW import tabs without re-importing.
@@ -55,11 +55,11 @@ subtable (cols 13-17). See `KINTONE_FORMAT.md` for the full column contract.
 - **Hide audit + log tabs** / **Show all tabs**.
 
 ## Tabs at a glance
-- **Working:** Clean Pull, Sort, Review, Excluded, `<Name> - Sort` (per analyst).
+- **Working:** Clean Pull, Sort, Excluded, `<first name>` review tabs (one per analyst).
 - **Reference:** Current DB, Watchlist, FR Exclude, Confirmed Exclude, No Ticker Reference (hidden).
 - **Output:** Adds, Kintone Upload.
 - **Guides:** Workflow, Pipeline Status.
-- **Audit:** In DB Log, Stats, History Log, Config.
+- **Audit:** History Log, Config.
 
 ## Notes
 - Drift now lives on **Sort** (the old `Attention - DB Drift` tab is retired and auto-deleted).
