@@ -2,8 +2,8 @@
 
 Operator/analyst runbook for the DARB new-securities pipeline (the `Code.gs` in this
 folder). Everything is driven from the **DARB Pipeline** menu in the workbook. The
-in-sheet **Workflow** tab is the short version of this doc; the **Pipeline Status** tab
-shows which steps have run this cycle.
+in-sheet **Dashboard** tab is the short version of this doc — it holds the step-status
+table (which steps ran this cycle), the editable Settings, and the workflow guide.
 
 ## Weekly cycle (run in order)
 
@@ -48,8 +48,8 @@ mismatches; **Re-apply Tier/Sector rules** re-runs them in bulk. New names land 
 Source `AS Pull`. (Editable text lives in `TIER_RATIONALE_CONFIG` in `Code.gs`.)
 
 ## Tracking progress
-- **Pipeline Status** tab — one row per step with **Last Run**, **Result**, and a ✓ under
-  **Done This Cycle**, updated automatically as you run each step.
+- **Dashboard** tab (status table at top) — one row per step with **Last Run**, **Result**, and a
+  ✓ under **Done This Cycle**, updated automatically as you run each step.
 - **Utilities → Start New Cycle** — clears the ✓ marks to begin a fresh week.
 - **History Log** tab — full audit trail of every run.
 
@@ -58,15 +58,15 @@ Source `AS Pull`. (Editable text lives in `TIER_RATIONALE_CONFIG` in `Code.gs`.)
 - **Import legacy Watchlist** - one-time load of the legacy macro Watchlist.
 - **Rescaffold / Restyle Tabs** - repair headers, dropdowns, formatting and tab colours; also
   clears stale validations and deletes retired tabs. Run this after any script update.
-- **Start New Cycle** - reset the Pipeline Status checkmarks.
+- **Start New Cycle** - reset the Dashboard status checkmarks.
 - **Hide audit + log tabs** / **Show all tabs**.
 
 ## Tabs at a glance
 - **Working:** Clean Pull, Sort, Excluded, `<first name>` review tabs (one per analyst).
 - **Reference:** Current DB, Watchlist, FR Exclude, Confirmed Exclude, No Ticker Reference (hidden).
 - **Output:** Adds, Kintone Upload.
-- **Guides:** Workflow, Pipeline Status.
-- **Audit:** History Log, Config.
+- **Guide:** Dashboard (status table + Settings + workflow guide).
+- **Audit:** History Log.
 
 ## Notes
 - Drift now lives on **Sort** (the old `Attention - DB Drift` tab is retired and auto-deleted).

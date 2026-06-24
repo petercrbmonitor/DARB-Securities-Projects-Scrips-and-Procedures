@@ -188,7 +188,7 @@ var TAB_COLOR = {
   output: '#0b8043',      // deliverables (Adds, Kintone Upload)
   audit: '#999999',       // logs / settings
   intern: '#1aa39a',      // per-analyst review tabs (named by first name)
-  guide: '#8e44ad'        // operator guides (Pipeline Status, Workflow)
+  guide: '#8e44ad'        // operator dashboard / guide
 };
 var TAB_ROLE = {
   'Clean Pull': 'action', 'Sort': 'action',
@@ -196,8 +196,8 @@ var TAB_ROLE = {
   'Current DB': 'reference', 'Watchlist': 'reference', 'FR Exclude': 'reference',
   'Confirmed Exclude': 'reference', 'No Ticker Reference': 'reference',
   'Adds': 'output', 'Kintone Upload': 'output',
-  'History Log': 'audit', 'Config': 'audit',
-  'Pipeline Status': 'guide', 'Workflow': 'guide'
+  'History Log': 'audit',
+  'Dashboard': 'guide'
 };
 /* Audit tabs the Utilities menu can hide (Config kept visible - it holds an editable setting). */
 var AUDIT_TAB_NAMES = ['History Log'];
@@ -207,7 +207,16 @@ var AUDIT_TAB_NAMES = ['History Log'];
 var OBSOLETE_TABS = ['Attention - DB Drift', 'Kintone Profiles', 'Kintone Source Docs', 'Review',
   'In DB Log', 'Stats'];
 
-/* Operator dashboard: the numbered pipeline steps tracked on the "Pipeline Status" tab. */
+/* The single "Dashboard" tab merges three former tabs: the pipeline-step status table (top),
+ * the editable Settings block (middle), and the operating-workflow guide (bottom). */
+var DASHBOARD_NAME = 'Dashboard';
+/* Editable settings shown in the Dashboard's Settings block (label, default). Read by label. */
+var CONFIG_DEFAULTS = [
+  ['Ticker flag keywords (comma-separated)', '.IN'],
+  ['Re-review tickers older than (days)', 365],
+  ['Resurface tickers with no reviewed date (Yes/No)', 'No']
+];
+/* Operator dashboard: the numbered pipeline steps tracked on the Dashboard's status table. */
 var PIPELINE_STEPS = [
   '1. Refresh DB References',
   '2. Import Pull Files',
@@ -264,9 +273,7 @@ var TABS = {
     'Select', 'Move To', 'Assign To'] },
   excluded: { name: 'Excluded', header: ['Company Name (AlphaSense)', 'Ticker',
     'Matched Source List', 'Match Type', 'Select', 'Move To'] },
-  history: { name: 'History Log', header: ['Timestamp', 'Action', 'Source', 'Details'] },
-  config: { name: 'Config', header: ['Setting', 'Value'] },
-  status: { name: 'Pipeline Status', header: ['Step', 'Last Run', 'Result', 'Done This Cycle'] }
+  history: { name: 'History Log', header: ['Timestamp', 'Action', 'Source', 'Details'] }
 };
 
 /* Intern row layout (0-based). The analyst fills everything needed to build the Kintone
@@ -344,9 +351,7 @@ function scaffoldAll_(force) {
   removeObsoleteTabs_();
   migrateInternTabNames_();
   Object.keys(TABS).forEach(function (k) { ensureTab_(TABS[k], force === true); });
-  seedConfig_();
-  seedStatus_();
-  ensureWorkflowTab_(force === true);
+  ensureDashboardTab_(force === true);
   ensureDefaultInternTabs_();
   scaffoldInternSheets_(force === true);
   refreshSortValidations_();
@@ -373,58 +378,61 @@ function removeObsoleteTabs_() {
 
 /* ===================== OPERATOR STATUS / WORKFLOW =================================== */
 
-/** Seed the "Pipeline Status" dashboard with one row per step (only when empty). */
-function seedStatus_() {
-  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.status.name);
-  if (!sh || sh.getLastRow() >= 2) return;
-  var rows = PIPELINE_STEPS.map(function (s) { return [s, '', '', '']; });
-  sh.getRange(2, 1, rows.length, 4).setValues(rows);
-  applyFormat_(sh, TABS.status.header.length);
+/** The merged Dashboard tab (status table + Settings + workflow guide). */
+function dashboardSheet_() { return SpreadsheetApp.getActive().getSheetByName(DASHBOARD_NAME); }
+
+/** 1-based row of a pipeline step in the Dashboard status table, or 0. */
+function dashboardStepRow_(sh, label) {
+  if (!sh) return 0;
+  var lr = sh.getLastRow();
+  if (lr < 1) return 0;
+  var col = sh.getRange(1, 1, lr, 1).getValues();
+  for (var i = 0; i < col.length; i++) if (String(col[i][0]) === label) return i + 1;
+  return 0;
 }
 
-/** Stamp a step's row on the Status tab: Last Run = now, Result, Done This Cycle = check. */
+/** Stamp a step's status row: Last Run = now, Result, Done This Cycle = check. */
 function markStep_(label, result) {
-  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.status.name);
-  if (!sh) return;
-  var lr = sh.getLastRow();
-  if (lr < 2) return;
-  var labels = sh.getRange(2, 1, lr - 1, 1).getValues();
-  for (var i = 0; i < labels.length; i++) {
-    if (String(labels[i][0]) === label) {
-      sh.getRange(i + 2, 2, 1, 3).setValues([[new Date(), String(result || ''), '✓']]);
-      formatRow_(sh, i + 2, TABS.status.header.length);
-      return;
-    }
-  }
+  var sh = dashboardSheet_();
+  var row = dashboardStepRow_(sh, label);
+  if (!row) return;
+  sh.getRange(row, 2, 1, 3).setValues([[new Date(), String(result || ''), '✓']]);
 }
 
 /** Warn-and-confirm guard: if the immediately-prior pipeline step has not run this cycle,
  *  ask before proceeding. Re-running an already-done step is never blocked. n = step number. */
 function stepGuard_(n) {
   if (n <= 1) return true;
-  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.status.name);
-  if (!sh || sh.getLastRow() < n) return true;                 // status not ready -> don't block
-  if (String(sh.getRange(n, 4).getValue() || '').trim()) return true; // prior step done (sheet row n)
+  var prior = PIPELINE_STEPS[n - 2];
+  var sh = dashboardSheet_();
+  var row = dashboardStepRow_(sh, prior);
+  if (!row) return true;                                       // status not ready -> don't block
+  if (String(sh.getRange(row, 4).getValue() || '').trim()) return true; // prior step done
   var ui = SpreadsheetApp.getUi();
   return ui.alert('Run out of order?',
-    'Step ' + (n - 1) + ' "' + PIPELINE_STEPS[n - 2] + '" has not run this cycle.\n\n' +
+    'Step ' + (n - 1) + ' "' + prior + '" has not run this cycle.\n\n' +
     'Continue with step ' + n + ' "' + PIPELINE_STEPS[n - 1] + '" anyway?',
     ui.ButtonSet.YES_NO) === ui.Button.YES;
 }
 
 /** Utilities action: clear the Done-This-Cycle checks to start a fresh weekly cycle. */
 function startNewCycle() {
-  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.status.name);
-  if (sh && sh.getLastRow() >= 2) sh.getRange(2, 4, sh.getLastRow() - 1, 1).clearContent();
-  logHistory_('Start New Cycle', 'Pipeline Status', 'Cleared step completion checks');
+  var sh = dashboardSheet_();
+  if (sh) {
+    PIPELINE_STEPS.forEach(function (label) {
+      var row = dashboardStepRow_(sh, label);
+      if (row) sh.getRange(row, 4).clearContent();
+    });
+  }
+  logHistory_('Start New Cycle', DASHBOARD_NAME, 'Cleared step completion checks');
   toast_('New cycle started - step checkmarks cleared.');
 }
 
 var WORKFLOW_LINES = [
   'DARB Pipeline - Operating Workflow',
   '',
-  'Run these from the "DARB Pipeline" menu, in order. The "Pipeline Status" tab shows which',
-  'steps have run this cycle (Last Run, Result, Done This Cycle).',
+  'Run these from the "DARB Pipeline" menu, in order. The status table at the top of this',
+  'Dashboard tab shows which steps have run this cycle (Last Run, Result, Done This Cycle).',
   '',
   '1. Refresh DB References - upload the latest Kintone export (.xlsx). Rebuilds Current DB and',
   '   merges the Watchlist (locally added rows kept; rows now Active graduate off).',
@@ -455,21 +463,102 @@ var WORKFLOW_LINES = [
   '   - Reference docs in the repo: PROCESS.md, KINTONE_FORMAT.md, ENGINEERING_HANDOFF.md.'
 ];
 
-/** Create + populate the in-sheet "Workflow" (read-me) tab. */
-function ensureWorkflowTab_(force) {
+/** Build / refresh the single "Dashboard" tab: status table (top), Settings (middle), workflow
+ *  guide (bottom). A normal scaffold leaves an existing dashboard untouched (preserving status
+ *  state + edited settings); force rebuilds while preserving those. On first build it migrates the
+ *  legacy Pipeline Status / Config / Workflow tabs, then deletes them. */
+function ensureDashboardTab_(force) {
   var ss = SpreadsheetApp.getActive();
-  var sh = ss.getSheetByName('Workflow');
-  var isNew = false;
-  if (!sh) { sh = ss.insertSheet('Workflow'); isNew = true; }
-  if (force || isNew || sh.getRange(1, 1).getValue() === '') {
-    sh.clear();
-    var rows = WORKFLOW_LINES.map(function (l) { return [l]; });
-    sh.getRange(1, 1, rows.length, 1).setValues(rows).setFontFamily('Calibri').setWrap(true);
-    sh.getRange(1, 1).setFontWeight('bold').setFontSize(13);
-    sh.setColumnWidth(1, 920);
-    sh.setFrozenRows(1);
-  }
+  var sh = ss.getSheetByName(DASHBOARD_NAME);
+  var built = sh && String(sh.getRange(1, 1).getValue()).trim() !== '';
+
+  if (built) deleteLegacyDashboardTabs_();   // data already migrated - clean up any stragglers
+  if (built && !force) return;
+
+  // Preserve dynamic state: per-step status + edited settings. Read the existing dashboard first,
+  // then the legacy tabs (migration) - the first value seen for a key wins.
+  var statusState = {}, configState = {};
+  readDashboardState_(sh, statusState, configState);
+  readDashboardState_(ss.getSheetByName('Pipeline Status'), statusState, configState);
+  readDashboardState_(ss.getSheetByName('Config'), statusState, configState);
+
+  var isNew = !sh;
+  if (!sh) sh = ss.insertSheet(DASHBOARD_NAME);
+  sh.clear();
+  sh.clearNotes();
+  var maxR = sh.getMaxRows(), maxC = sh.getMaxColumns();
+  if (maxR >= 1) sh.getRange(1, 1, maxR, maxC).clearDataValidations();
+
+  buildDashboardLayout_(sh, statusState, configState);
+  if (isNew) { try { ss.setActiveSheet(sh); ss.moveActiveSheet(1); } catch (e) { /* limited auth */ } } // dashboard leads
+  deleteLegacyDashboardTabs_();              // legacy tabs now merged in
   return sh;
+}
+
+/** Delete the former Pipeline Status / Config / Workflow tabs. Skips any that is currently the
+ *  active sheet (can't delete it now) - the next scaffold removes it. */
+function deleteLegacyDashboardTabs_() {
+  var ss = SpreadsheetApp.getActive();
+  ['Pipeline Status', 'Config', 'Workflow'].forEach(function (n) {
+    var old = ss.getSheetByName(n);
+    if (old && ss.getSheets().length > 1) {
+      try { ss.deleteSheet(old); } catch (e) { /* active sheet - retry next scaffold */ }
+    }
+  });
+}
+
+/** Scan a sheet for pipeline-step status rows + setting rows; fill the maps (first value wins). */
+function readDashboardState_(sh, statusState, configState) {
+  if (!sh) return;
+  var lr = sh.getLastRow();
+  if (lr < 1) return;
+  var w = Math.min(Math.max(sh.getLastColumn(), 2), 4);
+  sh.getRange(1, 1, lr, w).getValues().forEach(function (r) {
+    var key = String(r[0]).trim();
+    if (!key) return;
+    if (PIPELINE_STEPS.indexOf(key) >= 0) {
+      if (statusState[key] === undefined) statusState[key] = [r[1], r[2] || '', r[3] || ''];
+    } else {
+      for (var i = 0; i < CONFIG_DEFAULTS.length; i++) {
+        if (key === CONFIG_DEFAULTS[i][0] && configState[key] === undefined &&
+            String(r[1]).trim() !== '') configState[key] = r[1];
+      }
+    }
+  });
+}
+
+/** Lay out the Dashboard: status table (rows 1..N+1), Settings block, then the workflow guide. */
+function buildDashboardLayout_(sh, statusState, configState) {
+  var data = [['Step', 'Last Run', 'Result', 'Done This Cycle']];        // 1: status header
+  PIPELINE_STEPS.forEach(function (s) {
+    var st = statusState[s] || ['', '', ''];
+    data.push([s, st[0] || '', st[1] || '', st[2] || '']);
+  });
+  data.push(['', '', '', '']);                                           // spacer
+  var settingsTitleRow = data.length + 1;                               // 1-based
+  data.push(['Settings - edit the Value column only', '', '', '']);
+  data.push(['Setting', 'Value', '', '']);
+  CONFIG_DEFAULTS.forEach(function (d) {
+    data.push([d[0], (configState[d[0]] !== undefined ? configState[d[0]] : d[1]), '', '']);
+  });
+  data.push(['', '', '', '']);                                           // spacer
+  var guideTitleRow = data.length + 1;                                  // 1-based
+  WORKFLOW_LINES.forEach(function (l) { data.push([l, '', '', '']); });
+
+  sh.getRange(1, 1, data.length, 4).setValues(data)
+    .setFontFamily('Calibri').setVerticalAlignment('top');
+  sh.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground(HEADER_TEAL).setFontColor('#ffffff');
+  sh.getRange(settingsTitleRow, 1, 1, 4).setBackground(BAND_TEAL);
+  sh.getRange(settingsTitleRow, 1).setFontWeight('bold');
+  sh.getRange(settingsTitleRow + 1, 1, 1, 2).setFontWeight('bold');     // Setting | Value sub-header
+  sh.getRange(guideTitleRow, 1).setFontWeight('bold').setFontSize(13);  // guide title line
+  sh.getRange(guideTitleRow, 1, WORKFLOW_LINES.length, 1).setWrap(true);
+  sh.setColumnWidth(1, 520);
+  sh.setColumnWidth(2, 170);
+  sh.setColumnWidth(3, 230);
+  sh.setColumnWidth(4, 120);
+  sh.setFrozenRows(1);
+  sh.getRange(1, 1).setNote(TAB_HELP[DASHBOARD_NAME] || '');
 }
 
 /** Hover hints on the free-text capture headers so analysts use the right delimiter format. */
@@ -491,7 +580,7 @@ function setCaptureHints_() {
 }
 
 /* Per-tab "how to use this tab" guidance - shown as a hover note on the top-left header cell
- * (hover the red corner). The Workflow tab holds the full end-to-end guide. */
+ * (hover the red corner). The Dashboard tab holds the full end-to-end guide. */
 var TAB_HELP = {
   'Sort': 'TRIAGE QUEUE (built by Run Crosscheck). New names AND near-matches live here.\n' +
     '- Source "Review"   = near-match to something already tracked; read the Note, confirm new vs same.\n' +
@@ -501,7 +590,8 @@ var TAB_HELP = {
   'Adds': 'STAGING for Kintone adds - one row per qualified profile (auto-created when an analyst\n' +
     'routes a Sort row to "Add"). Fill in Website URLs / Source Documents, then run Build Kintone\n' +
     'Upload. Imported? auto-ticks once the profile shows up in Current DB.',
-  'Config': 'SETTINGS - edit the Value column only; keep the Setting names unchanged.\n' +
+  'Dashboard': 'HOME - the operating guide (bottom), pipeline-step status (top), and Settings.\n' +
+    'Edit ONLY the Settings "Value" column; keep the Setting names unchanged:\n' +
     '- Re-review tickers older than (days): tracked tickers older than this resurface onto Sort.\n' +
     '- Resurface tickers with no reviewed date (Yes/No): include never-reviewed tickers too.\n' +
     '(Analyst names live in the script ANALYST_OPTIONS list; a tab is created on first assign.)',
@@ -550,33 +640,11 @@ function resetTabForHeader_(sh, headerLen) {
   if (mc > headerLen) sh.getRange(1, headerLen + 1, 1, mc - headerLen).clearContent();
 }
 
-function seedConfig_() {
-  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.config.name);
-  if (!sh) return;
-  var defaults = [
-    ['Ticker flag keywords (comma-separated)', '.IN'],
-    ['Re-review tickers older than (days)', 365],
-    ['Resurface tickers with no reviewed date (Yes/No)', 'No']
-  ];
-  var existing = {};
-  if (sh.getLastRow() >= 2) {
-    sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().forEach(function (r) {
-      existing[String(r[0]).toLowerCase().trim()] = true;
-    });
-  }
-  defaults.forEach(function (d) {
-    if (!existing[d[0].toLowerCase().trim()]) {
-      sh.appendRow(d);
-      formatRow_(sh, sh.getLastRow(), 2);
-    }
-  });
-}
-
-/** Read a Config value whose Setting label starts with labelPrefix (case-insensitive). */
+/** Read a Settings value from the Dashboard whose label starts with labelPrefix (case-insensitive). */
 function configValue_(labelPrefix, def) {
-  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.config.name);
-  if (sh && sh.getLastRow() >= 2) {
-    var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+  var sh = dashboardSheet_();
+  if (sh && sh.getLastRow() >= 1) {
+    var vals = sh.getRange(1, 1, sh.getLastRow(), 2).getValues();
     for (var i = 0; i < vals.length; i++) {
       if (String(vals[i][0]).toLowerCase().indexOf(labelPrefix.toLowerCase()) === 0) {
         return vals[i][1];
@@ -1123,9 +1191,9 @@ var _flagKeywordsCache = null;
 function flagKeywords_() {
   if (_flagKeywordsCache) return _flagKeywordsCache;
   var def = ['.IN'];
-  var sh = SpreadsheetApp.getActive().getSheetByName(TABS.config.name);
-  if (sh && sh.getLastRow() >= 2) {
-    var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+  var sh = dashboardSheet_();
+  if (sh && sh.getLastRow() >= 1) {
+    var vals = sh.getRange(1, 1, sh.getLastRow(), 2).getValues();
     for (var i = 0; i < vals.length; i++) {
       if (String(vals[i][0]).toLowerCase().indexOf('ticker flag') === 0) {
         var kws = String(vals[i][1] || '').split(',')
@@ -2478,7 +2546,7 @@ function logHistory_(action, source, details) {
   sh.appendRow([new Date(), action, source, details]);
   trimTab_(sh, HISTORY_MAX);
   formatRow_(sh, sh.getLastRow(), TABS.history.header.length);
-  if (STEP_BY_ACTION[action]) markStep_(STEP_BY_ACTION[action], details); // update Pipeline Status
+  if (STEP_BY_ACTION[action]) markStep_(STEP_BY_ACTION[action], details); // update the Dashboard status
 }
 
 /** Wipe the Adds tab body after a Kintone import (header kept). Asks for confirmation. */
