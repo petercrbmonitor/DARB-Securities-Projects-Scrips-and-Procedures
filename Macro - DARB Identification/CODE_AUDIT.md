@@ -74,7 +74,7 @@ Still open: #4 (batch writes), #5 (ticker canonicalization), #6 (unit tests),
 
 `routeRow_`, `routeSheetRows_`, `cleanupActiveTab`, `processReviews`,
 `distributeSelected`, `consolidateToSort`, and `moveSelected` all mutate shared
-tabs (Watchlist, Adds, FR/Confirmed Exclude, In DB Log) with per-row
+tabs (Watchlist, Adds, FR/Confirmed Exclude) with per-row
 `appendRow`. The dedup guard (`findExistingRow_` then `appendRow`) is a
 check-then-act with no lock, so two interns running **Clean-up This Tab** at the
 same time can interleave appends and even double-create the same profile.
