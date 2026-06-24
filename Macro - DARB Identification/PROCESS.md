@@ -11,7 +11,7 @@ table (which steps ran this cycle), the editable Settings, and the workflow guid
 |---|-------------|--------------|
 | 1 | **Refresh DB References** | Upload the latest Kintone export (`.xlsx`). Rebuilds **Current DB**; merges **Watchlist** (locally added rows kept; rows now Active graduate off). |
 | 2 | **Import Pull Files** | Upload AlphaSense Search Summary exports (CSV/XLSX). Builds **Clean Pull**. |
-| 3 | **Run Crosscheck** | Classifies Clean Pull into **Sort** (new), **Review** (near-match to **Current DB** only), **Excluded** (already tracked). DB-drift cases (name/ticker changed vs the DB) also land on **Sort**, tagged `DB Drift`. |
+| 3 | **Run Crosscheck** | Classifies Clean Pull into **Sort** (new), **Review** (near-match to **Current DB** only), **Excluded** (already tracked). DB-drift cases (name/ticker changed vs the DB) also land on **Sort**, tagged `DB Drift`. Pull tickers containing the Dashboard's *Exclude pull tickers containing* keywords (default `.IN`) are **skipped entirely** — never added to Sort. |
 | 4 | **Distribute Selected to Interns** | On **Sort**: tick `Select`, then set `Assign To` (analyst) and run — hands the row to that analyst's review tab (named by first name, e.g. `Peter`; created on first assign). |
 | 5 | **Clean-up This Intern Tab** | On your review tab (your first name): set `Review Assignement` per row, then run to route each row to its destination. |
 | 6 | **Process Reviews** | Backstop sweep that routes eligible rows across **all** intern tabs. |
