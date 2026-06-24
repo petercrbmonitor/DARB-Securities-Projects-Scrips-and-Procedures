@@ -1,0 +1,21 @@
+framework_id,regulator_id,instrument,type,status,date,supersedes,verification_status,notes
+FW-001,REG-FED,SR 26-2 Model Risk Management,Supervisory letter,In force,2026-04,SR 11-7,verified,Supersedes SR 11-7; explicitly extends model-risk discipline to AI/ML.
+FW-002,REG-FED,SR 11-7 Model Risk Management,Supervisory letter,Superseded,2011-04,,verified,Historic MRM baseline; superseded by SR 26-2.
+FW-003,REG-EU,EU AI Act - Reg. (EU) 2024/1689,Regulation,Phasing in,2024-08,,verified,Prohibited practices and high-risk obligations phase in through 2026-2027; credit scoring + life/health insurance pricing are high-risk.
+FW-004,REG-APRA,APRA AI industry letter,Industry letter,In force,2026-04-30,,verified,Expects ISO/IEC 42001 & 23894 and integrated assurance across six risk categories.
+FW-005,REG-APRA,CPS 230 Operational Risk Management,Prudential standard,In force,2025-07-01,,verified,AI may be a material service / material model.
+FW-006,REG-APRA,CPS 234 / CPG 234 Information Security,Standard + guide,In force,,,verified,CPG 234 practice guide now extended to AI.
+FW-007,REG-APRA,ASIC cyber-resilience letter,Conduct letter,In force,2026-05-08,,verified,Frames frontier AI as part of directors' duty of care.
+FW-008,REG-FCA,FCA AI Update,Guidance,In force,2024,,verified,"Principles-based; existing rules apply (Consumer Duty, SM&CR, op resilience)."
+FW-009,REG-PRA,SS1/23 Model Risk Management Principles,Supervisory statement,In force,2023,,verified,Extends model-risk discipline to AI for PRA-regulated firms.
+FW-010,REG-MAS,AI Risk Management Guidelines,Guidelines (consultation),Consultation,2025-11,,verified,Consultation Nov 2025; finalisation expected 2026.
+FW-011,REG-MAS,FEAT Principles / Veritas,Principles + methodology,In force,2018,,verified,"Fairness, Ethics, Accountability, Transparency; Veritas + AI Verify provide testing tools."
+FW-012,REG-NIST,AI RMF 1.0,Voluntary framework,Published,2023-01,,verified,Govern / Map / Measure / Manage; widely used as control taxonomy.
+FW-013,REG-FINRA,Regulatory Notice 24-09,Regulatory notice,In force,2024,,verified,Confirms FINRA rules are technology-neutral and apply to AI/embedded tools.
+FW-014,REG-OSFI,Guideline E-23 Model Risk Management,Guideline,Finalised,2025,,needs-verification,Reported effective ~2027 and AI/ML explicitly in scope - confirm scope and effective date vs OSFI primary source.
+FW-015,REG-BCBS,'BCBS 350' AI/ML model-risk note,Standard,Unknown,,,needs-verification,Cited only in an LLM draft; no confirmation a numbered 'BCBS 350' exists - verify before ingestion.
+FW-016,REG-FSB,'12 sound practices' for AI adoption,Report,Unknown,2026,,needs-verification,Practice count and 2026 consultation status cited only in draft - confirm against FSB primary source.
+FW-017,REG-JFSA,AI model-risk framework / 48-hr incident notification,Framework,Unknown,2026,,needs-verification,Specific 48-hour notification and Q3-2026 timing appear only in a draft - confirm.
+FW-018,REG-SEC,Predictive Data Analytics rule,Proposed rule,Proposed,,,needs-verification,Proposal status/scope shifts; confirm current status (proposed vs withdrawn vs final) before relying on it.
+FW-019,REG-FINMA,Guidance on governance & risk management for AI,Guidance,Reported,2024,,needs-verification,'Guidance 08/2024' label from draft - confirm reference.
+FW-020,REG-EU,ISO/IEC 42001 & 23894,International standards,Published,,,verified,Referenced by APRA as the de facto recognised control frameworks; cross-jurisdiction relevance.

@@ -1,0 +1,7 @@
+update_id,update,date,action_for_dev,source
+UPD-01,Fed SR 26-2 supersedes SR 11-7,April 2026,Update key_framework + frameworks for REG-FED; SR 11-7 is now historic.,airiskaware (primary-source-checked)
+UPD-02,APRA 30 Apr 2026 AI industry letter,2026-04-30,Most explicit prudential AI statement; expects ISO/IEC 42001 & 23894 + integrated assurance.,airiskaware
+UPD-03,ASIC 8 May 2026 cyber-resilience letter,2026-05-08,Frames frontier AI as directors' duty of care.,airiskaware
+UPD-04,MAS AI Risk Management Guidelines,Consultation Nov 2025,Prescriptive AI obligations; finalisation expected 2026.,airiskaware
+UPD-05,FCA AI Update + PRA SS1/23,2024 / 2023,UK principles-based; existing rules apply; SS1/23 extends MRM to AI.,airiskaware
+UPD-06,EU AI Act = Reg. (EU) 2024/1689,2024-08 onward,"Use the regulation citation, not just 'EU AI Act'.",established

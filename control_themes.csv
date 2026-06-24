@@ -1,0 +1,13 @@
+control_id,theme,description,supporting_regulators_examples,suggested_product_module,priority
+CTRL-01,AI use-case inventory & risk classification,"Complete, current register of AI use cases with high/medium/low risk tiering and entity/business-line ownership.","EU AI Act, SR 26-2, APRA, MAS, BCBS, OSFI E-23",Model registry / inventory,Critical
+CTRL-02,Model risk management,"AI treated as governed models: identification of scope, independent validation, change management, vendor oversight.","SR 26-2, PRA SS1/23, BCBS, ECB, MAS, OSFI",MRM workflow + validation suite,Critical
+CTRL-03,Board & senior-management accountability,"Board-approved AI policy, named owners, attestation and escalation paths.","FCA SM&CR, SR 26-2, APRA, MAS, OSFI, FSB",Governance / attestation dashboards,Critical
+CTRL-04,Bias & fairness testing,"Defined methodology, demographic coverage, frequency and remediation for protected-attribute and proxy-discrimination risk.","EU AI Act, MAS FEAT, CFPB, ICO",Fairness metrics + adverse-action support,High
+CTRL-05,Explainability & transparency,"Model documentation/cards, explanation methods, consumer disclosure and automated-decision transparency.","EU AI Act, FINMA, OSFI, CFPB, ICO",Model cards + explanation tooling,High
+CTRL-06,Data governance & privacy,"Lawful basis, lineage, minimisation, data-quality and protection across the AI lifecycle.","ICO, EU AI Act, BaFin/DORA, MAS",Data lineage + privacy controls,High
+CTRL-07,Third-party / vendor & concentration risk,"Vendor due diligence, contract clauses, audit rights, exit planning and concentration monitoring for AI/cloud providers.","DORA, US interagency TPRM, MAS, APRA, OSFI, FSB",Vendor assessment + clause library,High
+CTRL-08,Lifecycle monitoring & drift detection,"Performance thresholds, drift alerts and periodic (e.g. quarterly) board reporting.","BCBS, FSB, MAS, OSFI, APRA",Monitoring + reporting packs,High
+CTRL-09,Operational resilience,AI as material service/model under resilience regimes; BCM integration and testing.,"APRA CPS 230, DORA, op-resilience rules",Resilience mapping,Medium
+CTRL-10,Incident management & regulatory notification,"Incident taxonomy, notification workflows and post-mortems aligned to each regulator's timelines.","DORA, FSB, APRA, (JFSA - verify)",Incident workflow,Medium
+CTRL-11,Audit & assurance,"Internal-audit AI coverage, external/independent assurance and inspection readiness.","APRA integrated assurance, SR 26-2, MAS",Assurance evidence store,Medium
+CTRL-12,Conduct & marketing integrity,"Control of AI-washing, supportable AI claims and conduct in advice/communications.","SEC, FTC, FINRA, FCA Consumer Duty",Claims / disclosure review,Medium
