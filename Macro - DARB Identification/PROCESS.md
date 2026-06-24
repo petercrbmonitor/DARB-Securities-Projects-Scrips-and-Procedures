@@ -15,7 +15,7 @@ shows which steps have run this cycle.
 | 4 | **Distribute Selected to Interns** | On **Sort**: tick `Select`, then set `Assign To` (analyst) and run — hands the row to that analyst's review tab (named by first name, e.g. `Peter`; created on first assign). |
 | 5 | **Clean-up This Intern Tab** | On your review tab (your first name): set `Review Assignement` per row, then run to route each row to its destination. |
 | 6 | **Process Reviews** | Backstop sweep that routes eligible rows across **all** intern tabs. |
-| 7 | **Build Kintone Upload** | Formats qualified **Adds** into the single **Kintone Upload** tab (18 columns, incl. **Analyst**). |
+| 7 | **Build Kintone Upload** | Formats qualified **Adds** into the single **Kintone Upload** tab (19 columns, incl. **Analyst** + **Tiering Rationale**). |
 | 8 | **Download Kintone Upload CSV** | Download and import into Kintone. |
 
 After step 8, run **Clear Adds (after Kintone import)** to empty the Adds tab for the next batch.
@@ -37,8 +37,15 @@ Hover the column headers for a reminder. One entry per line:
 - **Source Documents** — `Name | Note | URL | Date`
   - `PR - Launch | Added Press Release | https://company.com/pr | 2026-06-09`
 
-These flow into the Kintone Upload tab's Website subtable (cols 12-13) and Source Documents
-subtable (cols 14-18). See `KINTONE_FORMAT.md` for the full column contract.
+These flow into the Kintone Upload tab's Website subtable (cols 13-14) and Source Documents
+subtable (cols 15-19). See `KINTONE_FORMAT.md` for the full column contract.
+
+## Tier / Sector automation
+On **Sort**, the **analyst tabs**, **Adds** and **Kintone Upload**, picking a **Sector** auto-sets
+the **Tier**, the **Tier** auto-sets **Pure-Play** (2→Yes, 3→No), and both fill the **Inclusion
+Rationale** + **Tiering Rationale** boilerplate. **Utilities → Check Tier/Sector rules** flags
+mismatches; **Re-apply Tier/Sector rules** re-runs them in bulk. New names land on **Sort** with
+Source `AS Pull`. (Editable text lives in `TIER_RATIONALE_CONFIG` in `Code.gs`.)
 
 ## Tracking progress
 - **Pipeline Status** tab — one row per step with **Last Run**, **Result**, and a ✓ under

@@ -4,7 +4,7 @@ How the DARB pipeline builds the **`Kintone Upload`** tab, and which tab/column 
 field. The column order on `Kintone Upload` is the integration contract with Kintone -
 **do not reorder or rename** without coordinating with the Kintone import.
 
-## The `Kintone Upload` tab (18 columns)
+## The `Kintone Upload` tab (19 columns)
 
 One tab, three colour groups (matching the `KINTONE uPLOAD FORMAT` template):
 
@@ -20,23 +20,26 @@ One tab, three colour groups (matching the `KINTONE uPLOAD FORMAT` template):
 | 8 | Sector | parent |
 | 9 | Primary Business Description | parent |
 | 10 | Inclusion Rationale | parent |
-| 11 | Folder Name | parent |
-| 12 | Website Type | 🩷 Website subtable |
-| 13 | Website URL's | 🩷 Website subtable |
-| 14 | Added to BOX | 💛 Source Documents subtable |
-| 15 | Source Document Name | 💛 Source Documents subtable |
-| 16 | Note Per SD | 💛 Source Documents subtable |
-| 17 | Source URL | 💛 Source Documents subtable |
-| 18 | Date | 💛 Source Documents subtable |
+| 11 | Tiering Rationale | parent |
+| 12 | Folder Name | parent |
+| 13 | Website Type | 🩷 Website subtable |
+| 14 | Website URL's | 🩷 Website subtable |
+| 15 | Added to BOX | 💛 Source Documents subtable |
+| 16 | Source Document Name | 💛 Source Documents subtable |
+| 17 | Note Per SD | 💛 Source Documents subtable |
+| 18 | Source URL | 💛 Source Documents subtable |
+| 19 | Date | 💛 Source Documents subtable |
 
 - **Analyst** (col 4) = the assigned reviewer, carried from the Adds tab. Must be an exact
   Kintone user name (the `Assign To` dropdown is restricted to that list).
 - **Profile Review - Action Status** (col 5) is always `AlphaSense Macro (New Profiles)`.
-- **Added to BOX** (col 14) defaults to `No`.
+- **Inclusion Rationale** (col 10) + **Tiering Rationale** (col 11) are auto-filled from Tier +
+  Sector by the rule engine (see *Tier / Sector automation* below).
+- **Added to BOX** (col 15) defaults to `No`.
 
 **Row layout per company:** the `New record flag` is `*` on the **first row only**; then one
 row per **Source Document** (yellow filled, pink blank), then one row per **Website/Exchange
-URL** (pink filled, yellow blank). Parent fields (cols 1-11) are repeated on every row of the
+URL** (pink filled, yellow blank). Parent fields (cols 1-12) are repeated on every row of the
 record (1:1 with the template).
 
 ## Data flow: Intern tab → Adds → Kintone Upload
@@ -48,8 +51,8 @@ Adds into the upload tab.
 ### Review tab (`<first name>`) columns
 `Company Name (AlphaSense)` · `Ticker` · `Review Assignement` · `Ticker Reviewed Date` ·
 `Analyst` · `Primary Business Name` · `Primary Business Description` · `Inclusion Rationale` ·
-`If Add Recomended Tier` · `Recomended Sector` · `Pure-Play` · `Website URLs` ·
-`Source Documents` · `Source` · `Note` · `Date Assigned` · `Due Date`
+`Tiering Rationale` · `If Add Recomended Tier` · `Recomended Sector` · `Pure-Play` ·
+`Website URLs` · `Source Documents` · `Source` · `Note` · `Date Assigned` · `Due Date`
 
 - **Website URLs** - one entry per line, `Type | URL` (e.g. `Website | https://...`,
   `Exchange | https://...`). A bare URL is treated as `Website`.
@@ -57,11 +60,11 @@ Adds into the upload tab.
   (e.g. `PR - Launches TRM | Added Press Release | https://... | 2026-06-09`). Missing
   trailing fields are allowed.
 
-### Adds tab columns (16)
+### Adds tab columns (17)
 `Imported?` · `Select` · `Analyst` · `New Record Flag` · `AS Business Name` ·
 `Primary Business Name` · `AlphaSense Ticker` · `Profile Review - Action Status` ·
 `CRBM Tier` · `Pure-Play` · `Sector` · `Primary Business Description` · `Inclusion Rationale` ·
-`Folder Name` · `Website URLs` · `Source Documents`
+`Tiering Rationale` · `Folder Name` · `Website URLs` · `Source Documents`
 
 - **AS Business Name** = the AlphaSense name (reference). **Primary Business Name** = the
   editable canonical name that flows to Kintone. **Folder Name** mirrors Primary Business Name.
@@ -72,7 +75,18 @@ Adds into the upload tab.
 Analyst→4 · Primary Business Name→2 · AlphaSense Ticker→3 ·
 Profile Review - Action Status→5 (always `AlphaSense Macro (New Profiles)`) · CRBM Tier→6 ·
 Pure-Play→7 · Sector→8 · Primary Business Description→9 · Inclusion Rationale→10 ·
-Folder Name→11 · Website URLs→(12,13) · Source Documents→(14-18, Added to BOX = "No").
+Tiering Rationale→11 · Folder Name→12 · Website URLs→(13,14) · Source Documents→(15-19, Added to BOX = "No").
+
+## Tier / Sector automation (ported from Kintone)
+Live `onEdit` rules run on **Sort**, the **analyst review tabs**, **Adds**, and **Kintone Upload**
+(columns resolved by header name). Boilerplate lives in `TIER_RATIONALE_CONFIG` / `SECTOR_TO_TIER`
+in `Code.gs` - edit there.
+
+- **Sector → Tier** (Rule 1): picking a Sector auto-sets Tier per the mapping (e.g. `DA - Futures` → `1A`, `Pre-Acquisition SPAC` → `2`).
+- **Tier → Pure-Play** (Rule 2): Tier `2` → Pure-Play `Yes`; Tier `3` → Pure-Play `No`. (Sort has no Pure-Play column, so it's skipped there.)
+- **Tier + Sector → rationale** (Rule 3): fills `Inclusion Rationale` + `Tiering Rationale` (ETP/Fund and Futures sectors use their own text; everything else uses the company text).
+- **Validation** (Rule 5): **Utilities → Check Tier/Sector rules (active tab)** flags rows where Tier/Sector/Pure-Play don't match. **Re-apply Tier/Sector rules (active tab)** re-runs all rules in bulk.
+- Drop_down_19/Drop_down_10 (Pre-IPO/Active holdings cascade) stays Kintone-side - the sheets have no holdings subtable.
 
 ## Build behaviour
 - **Which rows build:** if any `Select` is ticked, only ticked rows; otherwise every row whose
