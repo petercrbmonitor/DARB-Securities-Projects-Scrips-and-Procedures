@@ -570,13 +570,13 @@ function setCaptureHints_() {
   var sdHint = 'One source document per line:  Name | Note | URL | Date\n' +
     'e.g.  PR - Launch | Added Press Release | https://company.com/pr | 2026-06-09';
   getInternSheets_().forEach(function (sh) {
-    sh.getRange(1, 12).setNote(webHint);   // Website URLs (col L)
-    sh.getRange(1, 13).setNote(sdHint);    // Source Documents (col M)
+    sh.getRange(1, 13).setNote(webHint);   // Website URLs (col M)
+    sh.getRange(1, 14).setNote(sdHint);    // Source Documents (col N)
   });
   var adds = ss.getSheetByName(TABS.adds.name);
   if (adds) {
-    adds.getRange(1, 15).setNote(webHint); // Website URLs (col O)
-    adds.getRange(1, 16).setNote(sdHint);  // Source Documents (col P)
+    adds.getRange(1, 16).setNote(webHint); // Website URLs (col P)
+    adds.getRange(1, 17).setNote(sdHint);  // Source Documents (col Q)
   }
 }
 
@@ -2182,10 +2182,10 @@ function routeRow_(internSh, rowNum, r, assignment) {
     if (findExistingRow_(addsSh, 5, 7, nT, nN) > 0) {
       appended = false;                              // already staged on Adds - no duplicate
     } else {
-      // Adds row (16 cols): Imported?, Select, Analyst, New Record Flag, AS Business Name,
+      // Adds row (17 cols): Imported?, Select, Analyst, New Record Flag, AS Business Name,
       // Primary Business Name, AlphaSense Ticker, Profile Review - Action Status, CRBM Tier,
-      // Pure-Play, Sector, Primary Business Description, Inclusion Rationale, Folder Name,
-      // Website URLs, Source Documents. Description / Inclusion Rationale seeded with labels.
+      // Pure-Play, Sector, Primary Business Description, Inclusion Rationale, Tiering Rationale,
+      // Folder Name, Website URLs, Source Documents. Desc / Inclusion / Tiering seeded with labels.
       addsSh.appendRow([false, false, analyst, '*', company, pbn, ticker, ACTION_STATUS_DEFAULT,
         tier, pureplay, sector, withPrefix_(desc, DESC_PREFIX),
         withPrefix_(inclusion, RATIONALE_PREFIX), tiering || '', '', websites, sourceDocs]);
@@ -2334,8 +2334,8 @@ function moveWriteDest_(dest, d, today) {
 
 /**
  * Build the single "Kintone Upload" tab from qualified Adds. Column order matches the
- * KINTONE uPLOAD FORMAT template (see KINTONE_FORMAT.md): cols 1-10 are the parent profile,
- * 11-12 the Website subtable (pink), 13-17 the Source Documents subtable (yellow). Per
+ * KINTONE uPLOAD FORMAT template (see KINTONE_FORMAT.md): cols 1-12 are the parent profile,
+ * 13-14 the Website subtable (pink), 15-19 the Source Documents subtable (yellow). Per
  * record we emit one row per Source Document then one row per Website URL; the parent fields
  * are repeated on every row and the New record flag "*" sits on the first row only.
  * Source docs come from the Adds "Source Documents" cell ("Name | Note | URL | Date" per
@@ -2350,7 +2350,7 @@ function buildKintoneUpload() {
   var adds = ss.getSheetByName(TABS.adds.name);
   var lr = adds.getLastRow();
   if (lr < 2) { toast_('Adds tab is empty - nothing to format.'); return; }
-  var width = TABS.adds.header.length; // 16
+  var width = TABS.adds.header.length; // 17
   var vals = adds.getRange(2, 1, lr - 1, width).getValues();
   var anySel = vals.some(function (r) { return r[1] === true; });  // Select = col B
 
