@@ -52,8 +52,8 @@ var SORT_MOVE_OPTIONS = ['Watchlist', 'FR Exclude', 'Confirmed Exclude', 'Remove
  *   moveOptions        = Move To choices for this tab (defaults to MOVE_OPTIONS).
  *   note(rowArray)     = context string carried into the destination's Note.            */
 var MOVABLE = {
-  'Sort': { dataCols: 10, company: 0, ticker: 1, tier: 6, sector: 7, analyst: 4,
-    moveOptions: SORT_MOVE_OPTIONS, note: function (r) { return String(r[9] || ''); } },
+  'Sort': { dataCols: 11, company: 0, ticker: 1, tier: 7, sector: 8, analyst: 4,
+    moveOptions: SORT_MOVE_OPTIONS, note: function (r) { return String(r[10] || ''); } },
   'Excluded': { dataCols: 4, company: 0, ticker: 1, note: function (r) {
     return 'From Excluded: ' + r[3] + ' (' + r[2] + ')'; } },
   'Watchlist': { dataCols: 13, company: 0, ticker: 1, tier: 6, sector: 11, analyst: 4,
@@ -90,6 +90,93 @@ var SECTOR_OPTIONS = [
   'DARB - Exchange Traded Note (ETN)', 'DARB - Closed-end Fund (CEF)',
   'Custody & Administration', 'Blockchain Developers', 'DA - Futures', 'Fund of Funds'
 ];
+
+/* ===================== TIER / SECTOR RULE ENGINE =====================
+ * Ported from the Kintone client logic (dropdownRules.js + tierRationaleConfig.js).
+ * Field codes -> sheet columns (resolved by header name, never by index):
+ *   Drop_down_2 (Tier)      = 'CRBM Tier' | 'If Add Recomended Tier'
+ *   Drop_down_3 (Sector)    = 'Sector' | 'Recomended Sector'
+ *   Drop_down_18 (Yes/No)   = 'Pure-Play'
+ *   Text_area_0 (Inclusion) = 'Inclusion Rationale'
+ *   Text_area_1 (Tier rat.) = 'Tiering Rationale'
+ * Rules run on edits to Tier or Sector across Sort / intern / Adds / Kintone Upload.
+ * (Drop_down_19/Drop_down_10 Table_1 cascade stays Kintone-only - no sheet subtable.) */
+
+/* Sector -> Tier mapping (Rule 1). Verbatim from dropdownRules.dropdown3To2Mapping. */
+var SECTOR_TO_TIER = {
+  '1A': [
+    'DA - Exchange Traded Fund (ETF)',
+    'DA - Exchange Traded Note (ETN)',
+    'DA - Closed-end Fund (CEF)',
+    'DA & DARB - Exchange Traded Fund (ETF)',
+    'DA & DARB - Exchange Traded Note (ETN)',
+    'DA & DARB - Closed-end Fund (CEF)',
+    'DA - Futures'
+  ],
+  '1B': [
+    'DA - Options Based Strategy ETP',
+    'Fund of Funds',
+    'DARB - Closed-end Fund (CEF)',
+    'DARB - Exchange Traded Note (ETN)',
+    'DARB - Exchange Traded Fund (ETF)'
+  ],
+  '2': ['Pre-Acquisition SPAC']
+};
+
+/* Rationale boilerplate (Rule 3). Strings are VERBATIM from tierRationaleConfig.js -
+ * edit here to change wording; do not reformat. */
+var TIER_RATIONALE_CONFIG = {
+  ETP_FUND_SECTORS: [
+    'DA - Exchange Traded Fund (ETF)',
+    'DA - Exchange Traded Note (ETN)',
+    'DA - Closed-end Fund (CEF)',
+    'DA - Options Based Strategy ETP',
+    'DA & DARB - Exchange Traded Fund (ETF)',
+    'DA & DARB - Exchange Traded Note (ETN)',
+    'DA & DARB - Closed-end Fund (CEF)',
+    'DARB - Exchange Traded Fund (ETF)',
+    'DARB - Exchange Traded Note (ETN)',
+    'DARB - Closed-end Fund (CEF)',
+    'Fund of Funds'
+  ],
+  FUTURES_SECTORS: ['DA - Futures'],
+  COMPANY: {
+    '1A': {
+      inclusion: 'INCLUSION RATIONALE: Research has confirmed that the company either (1) holds cryptocurrency, (2) conducts operations or has stated its intent to conduct operations that derive revenue from the digital asset ecosystem.',
+      tier: 'TIER RATIONALE: The company directly (1) holds cryptocurrency and/or (2) engages in "coin-touching" operations. Therefore, qualifies for Tier 1A.'
+    },
+    '1B': {
+      inclusion: 'INCLUSION RATIONALE: Research has confirmed that the company either (1) holds cryptocurrency, (2) conducts operations or has stated its intent to conduct operations that derive revenue from the digital asset ecosystem.',
+      tier: 'TIER RATIONALE: The company, through a subsidiary or investment, indirectly (1) holds cryptocurrency and/or (2) engages in "coin-touching" operations. However, there is no evidence to suggest that it directly does this itself. Therefore, qualifies for Tier 1B.'
+    },
+    '2': {
+      inclusion: 'INCLUSION RATIONALE: Research has confirmed that the company either (1) holds cryptocurrency, (2) conducts operations or has stated its intent to conduct operations that derive revenue from the digital asset ecosystem.',
+      tier: 'TIER RATIONALE: There is no evidence to suggest that the company directly or indirectly (1) holds cryptocurrency and/or (2) engages in "coin-touching" operations. Additionally, the company\'s involvement in the digital asset ecosystem (1) constitutes a substantial revenue source, relative to its overall business and/or (2) the company commits, intends or focuses on digital assets becoming a substantial revenue source. Therefore, qualifies for Tier 2.'
+    },
+    '3': {
+      inclusion: 'INCLUSION RATIONALE: Research has confirmed that the company either (1) holds cryptocurrency, (2) conducts operations or has stated its intent to conduct operations that derive revenue from the digital asset ecosystem.',
+      tier: 'TIER RATIONALE: There is no evidence to suggest that the company directly or indirectly (1) holds cryptocurrency and/or (2) engages in "coin-touching" operations. Additionally, the company\'s involvement in the digital asset ecosystem does not constitute a substantial revenue source, relative to its overall business. Therefore, qualifies for Tier 3.'
+    }
+  },
+  FUTURES: {
+    '1A': {
+      inclusion: 'INCLUSION RATIONALE: DA - Futures',
+      tier: 'TIER RATIONALE: The Fund or ETP invests in spot cryptocurrency or related derivatives directly and therefore qualifies as a Tier 1A DARB.'
+    }
+  },
+  ETP_FUND: {
+    '1A': {
+      inclusion: 'INCLUSION RATIONALE: All digital asset-themed Funds and ETPs qualify for inclusion.',
+      tier: 'TIER RATIONALE: The Fund or ETP invests in spot cryptocurrency or related derivatives directly and therefore qualifies as a Tier 1A DARB.'
+    },
+    '1B': {
+      inclusion: 'INCLUSION RATIONALE: All digital asset-themed Funds and ETPs qualify for inclusion.',
+      tier: 'TIER RATIONALE: The Fund or ETP invests in digital asset related businesses (DARBs) and has no direct investment in spot cryptocurrency. Therefore it qualifies as a Tier 1B DARB.'
+    }
+  }
+};
+/* Tabs the rule engine runs on (plus any intern/analyst tab, matched separately). */
+var RULE_TAB_NAMES = ['Sort', 'Adds', 'Kintone Upload'];
 var BORDER_COLOR = '#d9d9d9';
 var HEADER_TEAL = '#0e6e6e';   // dark teal header fill (white bold text)
 var BAND_TEAL = '#e4f3f1';     // light teal alternating band
@@ -158,22 +245,23 @@ var TABS = {
   adds: { name: 'Adds', header: ['Imported?', 'Select', 'Analyst', 'New Record Flag',
     'AS Business Name', 'Primary Business Name', 'AlphaSense Ticker',
     'Profile Review - Action Status', 'CRBM Tier', 'Pure-Play', 'Sector',
-    'Primary Business Description', 'Inclusion Rationale', 'Folder Name',
+    'Primary Business Description', 'Inclusion Rationale', 'Tiering Rationale', 'Folder Name',
     'Website URLs', 'Source Documents'] },
   /* Single merged Kintone bulk-upload tab - column order is the integration contract (matches
-     the KINTONE uPLOAD FORMAT template). Cols 1-11 = parent profile (incl. Analyst, the assigned
-     reviewer); 12-13 = Website subtable (pink); 14-18 = Source Documents subtable (yellow).
+     the KINTONE uPLOAD FORMAT template). Cols 1-12 = parent profile (incl. Analyst + Tiering
+     Rationale); 13-14 = Website subtable (pink); 15-19 = Source Documents subtable (yellow).
      See KINTONE_FORMAT.md. */
   kintoneUpload: { name: 'Kintone Upload', header: ['New record flag', 'Primary Business Name',
     'AlphaSense Ticker', 'Analyst', 'Profile Review - Action Status', 'CRBM Tier', 'Pure-Play',
-    'Sector', 'Primary Business Description', 'Inclusion Rationale', 'Folder Name',
+    'Sector', 'Primary Business Description', 'Inclusion Rationale', 'Tiering Rationale', 'Folder Name',
     'Website Type', "Website URL's", 'Added to BOX', 'Source Document Name', 'Note Per SD',
     'Source URL', 'Date'] },
   cleanPull: { name: 'Clean Pull', header: ['Company Name (AlphaSense)',
     'AlphaSense Ticker', 'CIK', 'ISIN', 'MCAP ($)', 'Region', 'Domicile Country'] },
   sort: { name: 'Sort', header: ['Company Name (AlphaSense)', 'Ticker',
     'Review Assignement', 'Ticker Reviewed Date', 'Analyst', 'Inclusion Rationale',
-    'If Add Recomended Tier', 'Recomended Sector', 'Source', 'Note', 'Select', 'Move To', 'Assign To'] },
+    'Tiering Rationale', 'If Add Recomended Tier', 'Recomended Sector', 'Source', 'Note',
+    'Select', 'Move To', 'Assign To'] },
   excluded: { name: 'Excluded', header: ['Company Name (AlphaSense)', 'Ticker',
     'Matched Source List', 'Match Type', 'Select', 'Move To'] },
   history: { name: 'History Log', header: ['Timestamp', 'Action', 'Source', 'Details'] },
@@ -185,15 +273,15 @@ var TABS = {
    Upload file (description, pure-play, websites, structured source docs):
    0 Company (AlphaSense) | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst |
    5 Primary Business Name | 6 Primary Business Description | 7 Inclusion Rationale |
-   8 If Add Recomended Tier | 9 Recomended Sector | 10 Pure-Play | 11 Website URLs |
-   12 Source Documents | 13 Source | 14 Note | 15 Date Assigned | 16 Due Date
+   8 Tiering Rationale | 9 If Add Recomended Tier | 10 Recomended Sector | 11 Pure-Play |
+   12 Website URLs | 13 Source Documents | 14 Source | 15 Note | 16 Date Assigned | 17 Due Date
    Website URLs: one "Type | URL" per line.  Source Documents: one "Name | Note | URL | Date"
    per line.                                                                             */
 var INTERN_HEADER = ['Company Name (AlphaSense)', 'Ticker', 'Review Assignement',
   'Ticker Reviewed Date', 'Analyst', 'Primary Business Name', 'Primary Business Description',
-  'Inclusion Rationale', 'If Add Recomended Tier', 'Recomended Sector', 'Pure-Play',
-  'Website URLs', 'Source Documents', 'Source', 'Note', 'Date Assigned', 'Due Date'];
-var INTERN_WIDTH = INTERN_HEADER.length; // 17
+  'Inclusion Rationale', 'Tiering Rationale', 'If Add Recomended Tier', 'Recomended Sector',
+  'Pure-Play', 'Website URLs', 'Source Documents', 'Source', 'Note', 'Date Assigned', 'Due Date'];
+var INTERN_WIDTH = INTERN_HEADER.length; // 18
 
 /* Exact Kintone user names - the Assign To options and the "Analyst" value uploaded to Kintone.
  * Must match Kintone verbatim. Edit here if the Kintone users change. */
@@ -237,6 +325,9 @@ function onOpen() {
       .addItem('Rescaffold / Restyle Tabs', 'rescaffold')
       .addItem('Start New Cycle (reset step checkmarks)', 'startNewCycle')
       .addSeparator()
+      .addItem('Re-apply Tier/Sector rules (active tab)', 'reapplyTierRules')
+      .addItem('Check Tier/Sector rules (active tab)', 'checkTierRules')
+      .addSeparator()
       .addItem('Hide audit + log tabs', 'hideAuditTabs')
       .addItem('Show all tabs', 'showAllTabs'))
     .addToUi();
@@ -264,6 +355,7 @@ function scaffoldAll_(force) {
   setCaptureHints_();
   setTabHelp_();
   colorTabs_();
+  ensureEditTrigger_();   // install the live Tier/Sector onEdit automation (idempotent)
 }
 
 /** Delete tabs retired by the redesign - their data now lives on Sort (Attention drift) and
@@ -577,9 +669,9 @@ function scaffoldInternSheets_(force) {
     var mr = sh.getMaxRows();
     if (mr > 1) {
       sh.getRange(2, 3, mr - 1, 1).setDataValidation(assignRule);    // Review Assignement (col 3)
-      sh.getRange(2, 9, mr - 1, 1).setDataValidation(tierRule);      // If Add Recomended Tier (col 9)
-      sh.getRange(2, 10, mr - 1, 1).setDataValidation(sectorRule);   // Recomended Sector (col 10)
-      sh.getRange(2, 11, mr - 1, 1).setDataValidation(pureplayRule); // Pure-Play (col 11)
+      sh.getRange(2, 10, mr - 1, 1).setDataValidation(tierRule);     // If Add Recomended Tier (col 10)
+      sh.getRange(2, 11, mr - 1, 1).setDataValidation(sectorRule);   // Recomended Sector (col 11)
+      sh.getRange(2, 12, mr - 1, 1).setDataValidation(pureplayRule); // Pure-Play (col 12)
     }
   });
 }
@@ -591,27 +683,32 @@ function isDateish_(v) {
 }
 
 /**
- * Realign one intern data row to the current 17-column layout (read at the new width).
+ * Realign one intern data row to the current 18-column layout (read at the new width).
  * Current (0-based): 0 Company | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst |
- *   5 Primary Business Name | 6 Description | 7 Inclusion Rationale | 8 Tier | 9 Sector |
- *   10 Pure-Play | 11 Website URLs | 12 Source Documents | 13 Source | 14 Note |
- *   15 Date Assigned | 16 Due Date
- * The prior 16-col layout had dates at 14/15 (Date Assigned/Due) and 8/9/10 as
- * Website/Exchange1/Exchange2; detect by a date at 14 or 15 with col 16 blank, then remap
- * (collapsing the three URL columns into "Type | URL" lines).
+ *   5 Primary Business Name | 6 Description | 7 Inclusion Rationale | 8 Tiering Rationale |
+ *   9 Tier | 10 Sector | 11 Pure-Play | 12 Website URLs | 13 Source Documents | 14 Source |
+ *   15 Note | 16 Date Assigned | 17 Due Date
+ * Two prior layouts are migrated:
+ *   - 17-col (no Tiering Rationale): Due Date at 16 -> insert a blank at index 8.
+ *   - 16-col: dates at 14/15, cols 8/9/10 were Website/Exchange1/Exchange2 -> collapse the
+ *     three URL columns into "Type | URL" lines and insert the blank Tiering Rationale.
  */
 function migrateInternRow_(r) {
-  if (isDateish_(r[16])) return r;                              // already current (Due Date at 16)
-  if (isDateish_(r[14]) || isDateish_(r[15])) {                // prior 16-col layout
+  if (isDateish_(r[17])) return r;                             // already current 18-col (Due at 17)
+  if (isDateish_(r[16])) {                                     // 17-col layout -> insert blank Tiering Rationale at 8
+    return [r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], '',
+      r[8], r[9], r[10], r[11], r[12], r[13], r[14], r[15], r[16]];
+  }
+  if (isDateish_(r[14]) || isDateish_(r[15])) {               // ancient 16-col layout
     var web = [];
     if (String(r[8] || '').trim()) web.push('Website | ' + String(r[8]).trim());
     if (String(r[9] || '').trim()) web.push('Exchange | ' + String(r[9]).trim());
     if (String(r[10] || '').trim()) web.push('Exchange | ' + String(r[10]).trim());
     return [r[0], r[1], r[2], r[3], r[4],
-      r[0], '', r[5], r[6], r[7], '',                           // PBN(=AS name), Desc, InclRat, Tier, Sector, Pure-Play
-      web.join('\n'), r[11], r[12], r[13], r[14], r[15]];       // Website URLs, SrcDocs, Source, Note, DateAssigned, Due
+      r[0], '', r[5], '', r[6], r[7], '',                      // PBN(=AS name), Desc, InclRat, TieringRat, Tier, Sector, Pure-Play
+      web.join('\n'), r[11], r[12], r[13], r[14], r[15]];      // Website URLs, SrcDocs, Source, Note, DateAssigned, Due
   }
-  return r;                                                     // markers / undated rows untouched
+  return r;                                                    // markers / undated rows untouched
 }
 
 /** Rewrite an intern tab's header to the canonical schema and realign its rows. */
@@ -633,16 +730,183 @@ function migrateInternTab_(sh) {
   reorganizeInternTab_(sh);   // restratify pending vs routed + restore strikethrough
 }
 
-/** Dropdowns on the Sort tab: Tier (G), Sector (H), Assign To (L). */
+/** Dropdowns on the Sort tab: Tier (H), Sector (I), Assign To (N). */
 function refreshSortValidations_() {
   var sh = SpreadsheetApp.getActive().getSheetByName(TABS.sort.name);
   if (!sh) return;
   var lr = sh.getLastRow();
   if (lr < 2) return;
   var n = lr - 1;
-  sh.getRange(2, 7, n, 1).setDataValidation(listRule_(TIER_OPTIONS));
-  sh.getRange(2, 8, n, 1).setDataValidation(listRule_(SECTOR_OPTIONS));
-  sh.getRange(2, 13, n, 1).setDataValidation(listRule_(ANALYST_OPTIONS)); // Assign To
+  sh.getRange(2, 8, n, 1).setDataValidation(listRule_(TIER_OPTIONS));
+  sh.getRange(2, 9, n, 1).setDataValidation(listRule_(SECTOR_OPTIONS));
+  sh.getRange(2, 14, n, 1).setDataValidation(listRule_(ANALYST_OPTIONS)); // Assign To
+}
+
+/* ---- Tier/Sector rule engine: row-level helpers (reusable for live edits + bulk) ---- */
+
+/** Resolve rule columns on a sheet by header name. Returns {tier,sector,inclusion,tiering,pureplay}
+ *  (1-based; 0 when a column is absent) or null if Tier and Sector aren't both present. */
+function ruleCols_(sh) {
+  var lastCol = sh.getLastColumn();
+  if (lastCol < 1) return null;
+  var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
+  function find(names) {
+    for (var i = 0; i < hdr.length; i++) if (names.indexOf(hdr[i]) >= 0) return i + 1;
+    return 0;
+  }
+  var tier = find(['CRBM Tier', 'If Add Recomended Tier']);
+  var sector = find(['Sector', 'Recomended Sector']);
+  if (!tier || !sector) return null;
+  return { tier: tier, sector: sector,
+    inclusion: find(['Inclusion Rationale']),
+    tiering: find(['Tiering Rationale']),
+    pureplay: find(['Pure-Play']) };
+}
+
+/** True if a tab participates in the rule engine (the three named tabs + any analyst tab). */
+function isRuleTab_(name) {
+  return RULE_TAB_NAMES.indexOf(name) >= 0 || ANALYST_BY_FIRST.hasOwnProperty(name);
+}
+
+/** Tier for a sector via the Rule 1 mapping ('' if none). */
+function tierForSector_(sector) {
+  for (var t in SECTOR_TO_TIER) {
+    if (SECTOR_TO_TIER.hasOwnProperty(t) && SECTOR_TO_TIER[t].indexOf(sector) >= 0) return t;
+  }
+  return '';
+}
+
+/** Rationale {inclusion,tier} for a Tier+Sector, or null. Mirrors the Kintone updateRationale order. */
+function rationaleFor_(tier, sector) {
+  if (!tier) return null;
+  var c = TIER_RATIONALE_CONFIG, r;
+  if (sector && c.FUTURES_SECTORS.indexOf(sector) >= 0) r = c.FUTURES[tier] || c.COMPANY[tier];
+  else if (sector && c.ETP_FUND_SECTORS.indexOf(sector) >= 0) r = c.ETP_FUND[tier] || c.COMPANY[tier];
+  else r = c.COMPANY[tier];
+  return r || null;
+}
+
+/** Rule 1: Sector -> Tier. */
+function applySectorToTier_(sh, row, cols) {
+  var sector = String(sh.getRange(row, cols.sector).getValue()).trim();
+  if (!sector) return;
+  var tier = tierForSector_(sector);
+  if (tier) sh.getRange(row, cols.tier).setValue(tier);
+}
+
+/** Rule 2: Tier -> Pure-Play (Drop_down_18). 2 -> Yes, 3 -> No. No-op if no Pure-Play column (Sort). */
+function applyTierToPurePlay_(sh, row, cols) {
+  if (!cols.pureplay) return;
+  var tier = String(sh.getRange(row, cols.tier).getValue()).trim();
+  if (tier === '2') sh.getRange(row, cols.pureplay).setValue('Yes');
+  else if (tier === '3') sh.getRange(row, cols.pureplay).setValue('No');
+}
+
+/** Rule 3: Tier + Sector -> Inclusion + Tiering rationale. Tier must be set; clears both if no match. */
+function applyRationale_(sh, row, cols) {
+  if (!cols.inclusion || !cols.tiering) return;
+  var tier = String(sh.getRange(row, cols.tier).getValue()).trim();
+  if (!tier) return;
+  var sector = String(sh.getRange(row, cols.sector).getValue()).trim();
+  var r = rationaleFor_(tier, sector);
+  if (r) {
+    sh.getRange(row, cols.inclusion).setValue(r.inclusion);
+    sh.getRange(row, cols.tiering).setValue(r.tier);
+  } else {
+    sh.getRange(row, cols.inclusion).clearContent();
+    sh.getRange(row, cols.tiering).clearContent();
+  }
+}
+
+/** Apply every row-level rule to one row (bulk re-apply + upload prep). */
+function applyRowRules_(sh, row, cols) {
+  applySectorToTier_(sh, row, cols);
+  applyTierToPurePlay_(sh, row, cols);
+  applyRationale_(sh, row, cols);
+}
+
+/** Installable onEdit: live Tier/Sector automation on the rule tabs. Never throws. */
+function onSheetEdit_(e) {
+  try {
+    if (!e || !e.range) return;
+    var sh = e.range.getSheet();
+    if (!isRuleTab_(sh.getName())) return;
+    var row = e.range.getRow();
+    if (row < 2 || e.range.getNumRows() > 1 || e.range.getNumColumns() > 1) return; // single data cell
+    var cols = ruleCols_(sh);
+    if (!cols) return;
+    var col = e.range.getColumn();
+    if (col === cols.sector) { applySectorToTier_(sh, row, cols); applyRationale_(sh, row, cols); }
+    else if (col === cols.tier) { applyTierToPurePlay_(sh, row, cols); applyRationale_(sh, row, cols); }
+  } catch (err) { /* edit triggers must stay silent */ }
+}
+
+/** Create the installable onEdit trigger once (idempotent). Swallows limited-auth failures
+ *  (e.g. when called from onOpen) - it installs on the next authorized menu action. */
+function ensureEditTrigger_() {
+  try {
+    var exists = ScriptApp.getProjectTriggers().some(function (t) {
+      return t.getHandlerFunction() === 'onSheetEdit_';
+    });
+    if (!exists) {
+      ScriptApp.newTrigger('onSheetEdit_').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
+    }
+  } catch (err) { /* installs later under full auth */ }
+}
+
+/** Bulk: re-apply all rules to every data row of a sheet (reusable before Kintone upload). */
+function applyAllRulesToSheet_(sh) {
+  var cols = ruleCols_(sh);
+  if (!cols) return 0;
+  var lr = sh.getLastRow();
+  if (lr < 2) return 0;
+  for (var row = 2; row <= lr; row++) applyRowRules_(sh, row, cols);
+  return lr - 1;
+}
+
+/** Menu: re-apply Tier/Sector rules across the active rule tab. */
+function reapplyTierRules() {
+  var sh = SpreadsheetApp.getActiveSheet();
+  if (!isRuleTab_(sh.getName())) { toast_('Open Sort, Adds, Kintone Upload or an analyst tab first.'); return; }
+  var n = applyAllRulesToSheet_(sh);
+  restyleTabs_([sh.getName()]);
+  logHistory_('Re-apply Tier Rules', sh.getName(), n + ' row(s) processed');
+  toast_('Re-applied Tier/Sector rules to ' + n + ' row(s).');
+}
+
+/** Menu / Rule 5: flag rows whose Tier/Sector/Pure-Play violate the mapping (surface, don't block). */
+function checkTierRules() {
+  var sh = SpreadsheetApp.getActiveSheet();
+  if (!isRuleTab_(sh.getName())) { toast_('Open Sort, Adds, Kintone Upload or an analyst tab first.'); return; }
+  var cols = ruleCols_(sh);
+  if (!cols) { toast_('No Tier/Sector columns on this tab.'); return; }
+  var lr = sh.getLastRow();
+  if (lr < 2) { toast_('Nothing to check.'); return; }
+  var vals = sh.getRange(2, 1, lr - 1, sh.getLastColumn()).getValues();
+  var issues = [];
+  vals.forEach(function (r, i) {
+    var tier = String(r[cols.tier - 1] || '').trim();
+    var sector = String(r[cols.sector - 1] || '').trim();
+    var pp = cols.pureplay ? String(r[cols.pureplay - 1] || '').trim() : '';
+    var label = String(r[0] || '').trim() || ('Row ' + (i + 2));
+    if (sector) {
+      var expect = tierForSector_(sector);
+      if (expect && tier !== expect) {
+        issues.push('Row ' + (i + 2) + ' (' + label + '): Sector "' + sector + '" expects Tier ' +
+          expect + ', has "' + (tier || 'blank') + '"');
+      }
+    }
+    if (cols.pureplay && tier === '2' && pp !== 'Yes') {
+      issues.push('Row ' + (i + 2) + ' (' + label + '): Tier 2 needs Pure-Play "Yes", has "' + (pp || 'blank') + '"');
+    }
+    if (cols.pureplay && tier === '3' && pp !== 'No') {
+      issues.push('Row ' + (i + 2) + ' (' + label + '): Tier 3 needs Pure-Play "No", has "' + (pp || 'blank') + '"');
+    }
+  });
+  if (!issues.length) { SpreadsheetApp.getUi().alert('Tier/Sector check: no issues on "' + sh.getName() + '".'); return; }
+  var shown = issues.slice(0, 30).join('\n');
+  SpreadsheetApp.getUi().alert('Tier/Sector check - ' + issues.length + ' issue(s) on "' + sh.getName() + '":\n\n' +
+    shown + (issues.length > 30 ? '\n\n...and ' + (issues.length - 30) + ' more.' : ''));
 }
 
 /** Dropdowns on the Adds tab: Action Status (H), CRBM Tier (I), Pure-Play (J), Sector (K);
@@ -1481,7 +1745,7 @@ function runCrosscheck() {
           ? Utilities.formatDate(ex.reviewed, tz, 'yyyy-MM-dd') : 'no date';
         var rnote = 'Re-review: was on ' + ex.source + ', last reviewed ' + dstr +
           ' (> ' + thresholdDays + 'd)' + (ex.note ? ' - ' + ex.note : '');
-        sortRows.push([company, ticker, '', '', '', '', ex.tier || '', ex.sector || '',
+        sortRows.push([company, ticker, '', '', '', '', '', ex.tier || '', ex.sector || '',
           ex.source, rnote]);                                //    stale -> back to Sort
         (resurrectedByTab[ex.source] = resurrectedByTab[ex.source] || {})[nt] = true;
         resurrected++;
@@ -1490,7 +1754,7 @@ function runCrosscheck() {
       exclRows.push([company, ticker, ex.source, 'Ticker']);
       var en = normName_(ex.name);
       if (nn && en && nn !== en && !fuzzyPair_(nn, en)) {    //    name drifted -> also surface on Sort
-        sortRows.push([company, ticker, '', '', '', '', '', '', 'DB Drift',
+        sortRows.push([company, ticker, '', '', '', '', '', '', '', 'DB Drift',
           'Name changed - same ticker as "' + ex.name + '" on ' + ex.source +
           '. Update the DB name, or move to a list.']);
         drift++;
@@ -1500,7 +1764,7 @@ function runCrosscheck() {
     if (isin && isinMap[isin] !== undefined) {               // b. same ISIN, new ticker
       var im = isinMap[isin];
       exclRows.push([company, ticker, im.source, 'ISIN']);
-      sortRows.push([company, ticker, '', '', '', '', '', '', 'DB Drift',
+      sortRows.push([company, ticker, '', '', '', '', '', '', '', 'DB Drift',
         'Ticker changed - same ISIN as ' + im.ticker + ' "' + im.name + '" on ' + im.source +
         '. Update the DB ticker, or move to a list.']);
       drift++;
@@ -1508,7 +1772,7 @@ function runCrosscheck() {
     }
     if (nn && nameMap[nn] !== undefined) {                   // c. exact name -> Sort (near-match)
       var nm = nameMap[nn];
-      sortRows.push([company, ticker, '', '', '', '', '', '', 'Review',
+      sortRows.push([company, ticker, '', '', '', '', '', '', '', 'Review',
         'Near-match (exact name) vs "' + nm.orig + '" on ' + nm.source +
         (nm.ticker ? ' (' + nm.ticker + ')' : '') + ' - confirm new vs same.']);
       nearMatch++;
@@ -1518,7 +1782,7 @@ function runCrosscheck() {
     if (fw.length >= 4 && firstWordIdx[fw]) {                // d. fuzzy name -> Sort (near-match)
       var m = fuzzyConfirm_(nn, firstWordIdx[fw]);
       if (m) {
-        sortRows.push([company, ticker, '', '', '', '', '', '', 'Review',
+        sortRows.push([company, ticker, '', '', '', '', '', '', '', 'Review',
           'Near-match (fuzzy name) vs "' + m.orig + '" on ' + m.source +
           (m.ticker ? ' (' + m.ticker + ')' : '') + ' - confirm new vs same.']);
         nearMatch++;
@@ -1528,20 +1792,20 @@ function runCrosscheck() {
     var root = tickerRoot_(nt);                              // e. ticker root -> Sort (near-match)
     if (root.length >= 3 && rootMap[root] !== undefined && rootMap[root].ticker !== nt) {
       var rm = rootMap[root];
-      sortRows.push([company, ticker, '', '', '', '', '', '', 'Review',
+      sortRows.push([company, ticker, '', '', '', '', '', '', '', 'Review',
         'Near-match (ticker root) vs "' + rm.name + '" on ' + rm.source +
         (rm.ticker ? ' (' + rm.ticker + ')' : '') + ' - possible listing/ticker change.']);
       nearMatch++;
       return;
     }
-    sortRows.push([company, ticker, '', '', '', '', '', '', '', '']); // f. definitely new
+    sortRows.push([company, ticker, '', '', '', '', '', '', '', 'AS Pull', '']); // f. definitely new (from the AlphaSense pull)
   });
 
   // Rebuild outputs (script-owned tabs only)
   var sortSh = ensureTab_(TABS.sort);
   clearBody_(sortSh);
   if (sortRows.length) {
-    sortSh.getRange(2, 1, sortRows.length, 10).setValues(sortRows);
+    sortSh.getRange(2, 1, sortRows.length, 11).setValues(sortRows);
   }
   applyFormat_(sortSh, TABS.sort.header.length);
   forceMoveCheckboxes_(['Sort']);   // Select + Move To
@@ -1654,22 +1918,22 @@ function distributeSelected_impl_() {
   var interns = {};
   getInternSheets_().forEach(function (sh) { interns[internName_(sh)] = sh; });
 
-  var vals = sortSh.getRange(2, 1, lr - 1, 13).getValues();
+  var vals = sortSh.getRange(2, 1, lr - 1, 14).getValues();
   var today = new Date();
   var due = addBusinessDays_(today, 5);
   var moved = 0, skipped = 0, toDelete = [], touched = {};
 
   vals.forEach(function (r, i) {
-    if (r[10] !== true) return;                      // Select checkbox
-    var who = String(r[12] || '').trim();            // Assign To
+    if (r[11] !== true) return;                      // Select checkbox
+    var who = String(r[13] || '').trim();            // Assign To
     if (!who || (!interns[who] && ANALYST_OPTIONS.indexOf(who) < 0)) { skipped++; return; }
     var sh = interns[who] || (interns[who] = ensureInternTab_(who)); // create the tab on demand
-    // Intern row (17 cols): default Primary Business Name to the AlphaSense name and seed
-    // the Description / Inclusion Rationale labels. Pure-Play, Website URLs and Source
-    // Documents start blank for the analyst to fill.
+    // Intern row (18 cols): default Primary Business Name to the AlphaSense name and seed the
+    // Description / Inclusion Rationale labels. Tiering Rationale carries Sort's auto-filled text.
+    // Pure-Play, Website URLs and Source Documents start blank for the analyst to fill.
     sh.appendRow([r[0], r[1], '', '', who, r[0], DESC_PREFIX,
-      withPrefix_(r[5], RATIONALE_PREFIX), r[6] || '', r[7] || '', '',
-      '', '', r[8] || '', r[9] || '', today, due]);
+      withPrefix_(r[5], RATIONALE_PREFIX), r[6] || '', r[7] || '', r[8] || '', '',
+      '', '', r[9] || '', r[10] || '', today, due]);
     formatRow_(sh, sh.getLastRow(), INTERN_WIDTH);
     touched[who] = sh;
     toDelete.push(i + 2);
@@ -1793,11 +2057,12 @@ function requiredOk_(assignment, r) {
  * Ticker Reviewed Date is stamped and the row is struck through for audit.
  * Skips creating a duplicate when the company (by ticker, or name if ticker blank) is
  * already on the destination list. Returns true if a destination row was appended, false
- * if it was a duplicate skip. (In DB is an audit log and always appends.)
- * Intern row (17 cols):
+ * if it was a duplicate skip. (An "In DB" assignment writes nothing - already in Current DB.)
+ * Intern row (18 cols):
  *   0 Company | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst | 5 Primary Business Name |
- *   6 Description | 7 Inclusion Rationale | 8 Tier | 9 Sector | 10 Pure-Play |
- *   11 Website URLs | 12 Source Documents | 13 Source | 14 Note | 15 Date Assigned | 16 Due Date
+ *   6 Description | 7 Inclusion Rationale | 8 Tiering Rationale | 9 Tier | 10 Sector |
+ *   11 Pure-Play | 12 Website URLs | 13 Source Documents | 14 Source | 15 Note |
+ *   16 Date Assigned | 17 Due Date
  */
 function routeRow_(internSh, rowNum, r, assignment) {
   var ss = SpreadsheetApp.getActive();
@@ -1806,9 +2071,9 @@ function routeRow_(internSh, rowNum, r, assignment) {
   var nT = normTicker_(ticker), nN = normName_(company);
   var analyst = String(r[4] || '').trim() || internName_(internSh);
   var pbn = String(r[5] || '').trim() || company;   // canonical name; default to the AlphaSense name
-  var desc = r[6], inclusion = r[7], tier = r[8], sector = r[9], pureplay = r[10];
-  var websites = r[11], sourceDocs = r[12];
-  var source = r[13], note = r[14];
+  var desc = r[6], inclusion = r[7], tiering = r[8], tier = r[9], sector = r[10], pureplay = r[11];
+  var websites = r[12], sourceDocs = r[13];
+  var source = r[14], note = r[15];
   var appended = true;
 
   if (assignment === 'Watchlist') {
@@ -1841,9 +2106,9 @@ function routeRow_(internSh, rowNum, r, assignment) {
       // Website URLs, Source Documents. Description / Inclusion Rationale seeded with labels.
       addsSh.appendRow([false, false, analyst, '*', company, pbn, ticker, ACTION_STATUS_DEFAULT,
         tier, pureplay, sector, withPrefix_(desc, DESC_PREFIX),
-        withPrefix_(inclusion, RATIONALE_PREFIX), '', websites, sourceDocs]);
+        withPrefix_(inclusion, RATIONALE_PREFIX), tiering || '', '', websites, sourceDocs]);
       var ar = addsSh.getLastRow();
-      addsSh.getRange(ar, 14).setFormula('=F' + ar);   // Folder Name mirrors Primary Business Name (col F)
+      addsSh.getRange(ar, 15).setFormula('=F' + ar);   // Folder Name mirrors Primary Business Name (col F)
       addsSh.getRange(ar, 1, 1, 2).insertCheckboxes(); // Imported? / Select = False
       formatRow_(addsSh, ar, TABS.adds.header.length);
       // Hold on Watchlist until it appears Active in a DB refresh (then it graduates off).
@@ -1961,11 +2226,11 @@ function moveWriteDest_(dest, d, today) {
   if (dest === 'Sort') {
     var sortSh = ss.getSheetByName(TABS.sort.name);
     if (findExistingRow_(sortSh, 1, 2, nT, nN) > 0) return false;
-    // Sort: Company|Ticker|RevAssign|RevDate|Analyst|Inclusion Rationale|Tier|Sector|Source|Note|Select|Move To|Assign To
-    sortSh.appendRow([d.company, d.ticker, '', '', '', '', d.tier || '', d.sector || '',
+    // Sort: Company|Ticker|RevAssign|RevDate|Analyst|Inclusion Rationale|Tiering Rationale|Tier|Sector|Source|Note|Select|Move To|Assign To
+    sortSh.appendRow([d.company, d.ticker, '', '', '', '', '', d.tier || '', d.sector || '',
       d.source, d.note || '', false, '', '']);
     var sr = sortSh.getLastRow();
-    sortSh.getRange(sr, 11).insertCheckboxes();              // Select
+    sortSh.getRange(sr, 12).insertCheckboxes();              // Select
     formatRow_(sortSh, sr, TABS.sort.header.length);
   } else if (dest === 'Watchlist') {
     var wl = ss.getSheetByName('Watchlist');
@@ -2065,11 +2330,11 @@ function buildKintoneUpload() {
     var ticker = r[6], analyst = String(r[2] || '').trim(),  // Adds col C = Analyst
         actionStatus = String(r[7] || '').trim() || ACTION_STATUS_DEFAULT,
         tier = r[8], pureplay = r[9] || '',
-        sector = r[10], desc = r[11], inclusion = r[12],
-        folder = String(r[13] || '').trim() || pbn;
+        sector = r[10], desc = r[11], inclusion = r[12], tiering = r[13] || '',
+        folder = String(r[14] || '').trim() || pbn;
 
-    var sds = parseSourceDocs_(r[15]);   // [{name, note, url, date}] -> yellow subtable
-    var webs = parseWebsites_(r[14]);    // [{type, url}]             -> pink subtable
+    var sds = parseSourceDocs_(r[16]);   // [{name, note, url, date}] -> yellow subtable
+    var webs = parseWebsites_(r[15]);    // [{type, url}]             -> pink subtable
     var blocks = [];
     sds.forEach(function (sd) { blocks.push({ sd: sd }); });   // Source Documents rows first
     webs.forEach(function (w) { blocks.push({ web: w }); });   // then Website URL rows
@@ -2080,7 +2345,7 @@ function buildKintoneUpload() {
       var sd = b.sd || { name: '', note: '', url: '', date: '' };
       out.push([
         k === 0 ? '*' : '',                          // New record flag (first row of record only)
-        pbn, ticker, analyst, actionStatus, tier, pureplay, sector, desc, inclusion, folder, // parent
+        pbn, ticker, analyst, actionStatus, tier, pureplay, sector, desc, inclusion, tiering, folder, // parent
         w.type || '', w.url || '',                   // pink: Website Type / Website URL's
         b.sd ? 'No' : '', sd.name || '', sd.note || '', sd.url || '', sd.date || '' // yellow: Source Docs
       ]);
