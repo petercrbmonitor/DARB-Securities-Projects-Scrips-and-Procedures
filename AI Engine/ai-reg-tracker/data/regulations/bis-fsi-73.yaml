@@ -1,0 +1,30 @@
+id: bis-fsi-73
+name: BIS FSI Insights No 73 - In data we trust?
+body: BIS Financial Stability Institute
+jurisdiction: Global
+regime_type: analytical
+domain:
+- data_governance
+status: in_force
+dates:
+  published: '2026-03-26'
+  last_reviewed: '2026-06-19'
+field_groups:
+- F
+- G
+summary: Companion to No 63 on AI data use in financial services - data privacy, quality and security,
+  intensified by third-party dependencies and market concentration. The strongest argument for a first-class
+  data-governance dimension in the register.
+source_urls:
+- https://www.bis.org/fsi/publ/insights73.htm
+related:
+- bis-fsi-63
+applies_to: []
+ai_assisted: false
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

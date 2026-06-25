@@ -1,0 +1,28 @@
+id: mas-mindforge-handbook
+name: MAS AI Risk Management Operationalisation Handbook (Project MindForge)
+body: Monetary Authority of Singapore
+jurisdiction: SG
+regime_type: supervisory
+domain:
+- cross_sector
+status: final_guidance
+dates:
+  published: '2026-03-20'
+  last_reviewed: '2026-06-19'
+field_groups:
+- F
+- G
+summary: A practical operationalisation guide for AI risk management, a benchmark the register's governance
+  and provenance fields can evidence against.
+source_urls:
+- https://www.mas.gov.sg/
+applies_to: []
+ai_assisted: false
+related: []
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

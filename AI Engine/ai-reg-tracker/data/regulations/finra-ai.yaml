@@ -1,0 +1,30 @@
+id: finra-ai
+name: FINRA guidance on AI in securities (incl. Reg Notice 24-09)
+body: FINRA
+jurisdiction: US
+regime_type: supervisory
+domain:
+- markets_conduct
+status: in_force
+dates:
+  published: '2024-06-27'
+  last_reviewed: '2026-06-19'
+field_groups:
+- D
+- E
+- F
+summary: Reminds member firms that existing rules are technology-neutral and apply to AI used in customer
+  communications, recommendations and algorithmic trading, with supervision expectations.
+source_urls:
+- https://www.finra.org/rules-guidance/key-topics/artificial-intelligence
+related:
+- sec-ai-disclosure
+applies_to: []
+ai_assisted: false
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

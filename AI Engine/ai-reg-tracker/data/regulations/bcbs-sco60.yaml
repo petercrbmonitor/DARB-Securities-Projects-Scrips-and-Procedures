@@ -1,0 +1,29 @@
+id: bcbs-sco60
+name: BCBS SCO60 - Prudential treatment of cryptoasset exposures
+body: Basel Committee on Banking Supervision
+jurisdiction: Global
+regime_type: hard_law
+domain:
+- banking_prudential
+- crypto
+status: in_force
+dates:
+  published: '2022-12-16'
+  effective: '2026-01-01'
+  last_reviewed: '2026-06-19'
+field_groups: []
+summary: Basel cryptoasset capital standard (Group 1a/1b/2a/2b, exposure limit, Pillar 3 templates). Adjacent
+  to the AI tracker - it anchors the DARB Capital Intelligence product, not the AI register. Included
+  for cross-reference; a targeted review is under way in 2026.
+source_urls:
+- https://www.bis.org/basel_framework/chapter/SCO/60.htm
+applies_to: []
+ai_assisted: false
+related: []
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

@@ -1,0 +1,31 @@
+id: amf-ai-market-participants
+name: AMF - The use of AI by financial market participants in France
+body: Autorite des Marches Financiers (with ESMA)
+jurisdiction: FR
+regime_type: analytical
+domain:
+- markets_conduct
+status: final_guidance
+dates:
+  published: '2026-02-01'
+  last_reviewed: '2026-06-19'
+field_groups:
+- D
+summary: 'French jurisdiction evidence from the ESMA pan-European survey: 90% adoption, mostly internal
+  GenAI use, strong third-party concentration on three US providers, maturing governance (72% have an
+  AI policy). Explainability is not a top French concern; governance, data and third-party dependence
+  are.'
+source_urls:
+- https://www.amf-france.org/
+related:
+- esma-algo-trading
+- iosco-ai-capital-markets
+applies_to: []
+ai_assisted: false
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

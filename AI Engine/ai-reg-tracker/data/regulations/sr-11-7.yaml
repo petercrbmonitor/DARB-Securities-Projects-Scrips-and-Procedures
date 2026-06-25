@@ -1,0 +1,29 @@
+id: sr-11-7
+name: SR 11-7 Supervisory Guidance on Model Risk Management
+body: US Federal Reserve / OCC
+jurisdiction: US
+regime_type: supervisory
+domain:
+- banking_prudential
+status: in_force
+dates:
+  published: '2011-04-04'
+  last_reviewed: '2026-06-19'
+field_groups:
+- F
+- G
+summary: Treats models - including AI/ML - as requiring development standards, independent validation,
+  ongoing monitoring and governance. The anchor for the register's model-risk and provenance fields, and
+  for vendor-model oversight.
+source_urls:
+- https://www.federalreserve.gov/supervisionreg/srletters/sr1107.htm
+applies_to: []
+ai_assisted: false
+related: []
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

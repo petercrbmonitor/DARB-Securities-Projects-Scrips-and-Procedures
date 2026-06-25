@@ -1,0 +1,28 @@
+id: mica
+name: Regulation (EU) 2023/1114 on Markets in Crypto-Assets (MiCA)
+body: EU Council / Parliament
+jurisdiction: EU
+regime_type: hard_law
+domain:
+- crypto
+- markets_conduct
+status: in_force
+dates:
+  published: '2023-06-09'
+  last_reviewed: '2026-06-19'
+field_groups: []
+summary: 'EU crypto-asset regime - categorisation and stablecoin rules. Adjacent: feeds the DARB product''s
+  crypto classification rather than the AI register.'
+source_urls:
+- https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32023R1114
+related:
+- bcbs-sco60
+applies_to: []
+ai_assisted: false
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

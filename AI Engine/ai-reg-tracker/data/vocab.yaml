@@ -1,0 +1,24 @@
+# Controlled vocabularies. The authoritative definition lives in src/ai_reg_tracker/models.py;
+# this file is the human-readable reference.
+
+jurisdiction: [Global, EU, US, UK, FR, SG, Other]
+
+regime_type:
+  hard_law:     binding statute or regulation
+  supervisory:  supervisory expectation or guidance
+  voluntary:    voluntary standard or framework
+  consultation: draft or consultation
+  analytical:   standard-setter analysis, not a rule
+
+domain: [cross_sector, banking_prudential, markets_conduct, accounting,
+         consumer_credit, crypto, corporate_conduct, aml, data_governance]
+
+status:
+  in_force:       in force / applicable now
+  proposed:       formally proposed, not adopted
+  provisional:    provisional / political agreement, not yet adopted
+  consultation:   open or closed consultation
+  withdrawn:      proposal withdrawn / superseded
+  final_guidance: final non-binding guidance
+
+confidence: [high, medium, low]   # confidence in the mapping, not the regulation

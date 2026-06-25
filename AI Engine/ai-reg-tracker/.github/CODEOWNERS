@@ -1,0 +1,5 @@
+# Every change to a regulation record requires review (four-eyes control).
+# Replace with the real reviewer handles / a team.
+/data/regulations/   @peter-simcox
+/src/                 @peter-simcox
+/docs/methodology.md  @peter-simcox

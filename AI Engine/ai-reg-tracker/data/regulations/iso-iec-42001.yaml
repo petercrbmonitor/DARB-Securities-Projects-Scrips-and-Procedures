@@ -1,0 +1,28 @@
+id: iso-iec-42001
+name: ISO/IEC 42001 AI management system standard
+body: ISO / IEC
+jurisdiction: Global
+regime_type: voluntary
+domain:
+- cross_sector
+status: in_force
+dates:
+  published: '2023-12-18'
+  last_reviewed: '2026-06-19'
+field_groups:
+- F
+- G
+summary: Certifiable management-system standard for AI governance; an artifact the register can map and
+  evidence conformance against.
+source_urls:
+- https://www.iso.org/standard/81230.html
+applies_to: []
+ai_assisted: false
+related: []
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

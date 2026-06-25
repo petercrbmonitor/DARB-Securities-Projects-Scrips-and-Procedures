@@ -1,0 +1,32 @@
+id: oecd-ai-due-diligence
+name: OECD Due Diligence Guidance for Responsible AI
+body: OECD
+jurisdiction: Global
+regime_type: voluntary
+domain:
+- corporate_conduct
+status: final_guidance
+dates:
+  published: '2026-02-19'
+  last_reviewed: '2026-06-19'
+field_groups:
+- E
+- F
+- H
+summary: Applies responsible-business-conduct due diligence to AI across the value chain via a six-step
+  cycle (embed, identify/assess, prevent/mitigate, track, communicate, remediate). Adds a human-rights/adverse-impact
+  lens plus stakeholder engagement and remediation, board oversight, and public disclosure of significant
+  adverse impacts. Voluntary but travels into procurement and audit.
+source_urls:
+- https://www.oecd.org/
+related:
+- oecd-ai-principles
+applies_to: []
+ai_assisted: false
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

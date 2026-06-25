@@ -1,0 +1,29 @@
+id: fsb-ai
+name: FSB work on AI and financial stability
+body: Financial Stability Board
+jurisdiction: Global
+regime_type: analytical
+domain:
+- cross_sector
+status: in_force
+dates:
+  published: '2024-11-14'
+  last_reviewed: '2026-06-19'
+field_groups:
+- F
+- H
+summary: The FSB monitors and assesses the financial-stability implications of AI and coordinates; it
+  has no rulemaking authority. AI has moved to an active workstream, with likely future emphasis on disclosure
+  of model provenance and concentration exposures.
+source_urls:
+- https://www.fsb.org/work-of-the-fsb/financial-innovation-and-structural-change/artificial-intelligence/
+applies_to: []
+ai_assisted: false
+related: []
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

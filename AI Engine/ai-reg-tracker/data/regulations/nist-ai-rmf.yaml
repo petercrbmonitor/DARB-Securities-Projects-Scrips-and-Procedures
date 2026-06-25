@@ -1,0 +1,28 @@
+id: nist-ai-rmf
+name: NIST AI Risk Management Framework
+body: NIST
+jurisdiction: US
+regime_type: voluntary
+domain:
+- cross_sector
+status: in_force
+dates:
+  published: '2023-01-26'
+  last_reviewed: '2026-06-19'
+field_groups:
+- F
+- G
+summary: A voluntary risk-management framework (Govern, Map, Measure, Manage) widely used as a control
+  benchmark the register's governance fields can evidence against.
+source_urls:
+- https://www.nist.gov/itl/ai-risk-management-framework
+applies_to: []
+ai_assisted: false
+related: []
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

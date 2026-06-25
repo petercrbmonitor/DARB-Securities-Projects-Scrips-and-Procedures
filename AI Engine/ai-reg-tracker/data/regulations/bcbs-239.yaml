@@ -1,0 +1,31 @@
+id: bcbs-239
+name: BCBS 239 - Principles for risk data aggregation and reporting
+body: Basel Committee on Banking Supervision
+jurisdiction: Global
+regime_type: supervisory
+domain:
+- banking_prudential
+- data_governance
+status: in_force
+dates:
+  published: '2013-01-09'
+  last_reviewed: '2026-06-19'
+field_groups:
+- G
+summary: Risk-data-aggregation and reporting principles (governance, lineage, accuracy, timeliness). Increasingly
+  framed as the data foundation for safe agentic AI - lineage, identifiers and traceability - so it bridges
+  the DARB feed and the AI register's provenance fields.
+source_urls:
+- https://www.bis.org/publ/bcbs239.htm
+related:
+- bcbs-sco60
+- sr-11-7
+applies_to: []
+ai_assisted: false
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

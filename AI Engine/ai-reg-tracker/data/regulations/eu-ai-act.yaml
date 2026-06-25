@@ -1,0 +1,44 @@
+id: eu-ai-act
+name: Regulation (EU) 2024/1689 (Artificial Intelligence Act)
+body: EU Council / Parliament
+jurisdiction: EU
+regime_type: hard_law
+domain:
+- cross_sector
+- markets_conduct
+status: in_force
+dates:
+  published: '2024-07-12'
+  effective: '2026-08-02'
+  deadlines:
+  - date: '2027-12-02'
+    note: Annex III high-risk obligations (Digital Omnibus deferral)
+  - date: '2028-08-02'
+    note: Annex I product-embedded high-risk
+  last_reviewed: '2026-06-19'
+applies_to:
+- provider
+- deployer
+field_groups:
+- B
+- C
+- E
+- H
+summary: Tiered, risk-based AI regime with extraterritorial reach. High-risk obligations were deferred
+  under the Digital Omnibus provisional agreement of 7 May 2026, but 2 Aug 2026 stays live until Official
+  Journal publication. Obligations differ by provider vs deployer; credit scoring and creditworthiness
+  assessment are high-risk.
+source_urls:
+- https://artificialintelligenceact.eu/
+related:
+- iosco-ai-capital-markets
+- esma-algo-trading
+- amf-ai-market-participants
+ai_assisted: false
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

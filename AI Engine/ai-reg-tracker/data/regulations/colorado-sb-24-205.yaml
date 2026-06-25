@@ -1,0 +1,28 @@
+id: colorado-sb-24-205
+name: Colorado SB 24-205 (Colorado Artificial Intelligence Act)
+body: State of Colorado
+jurisdiction: US
+regime_type: hard_law
+domain:
+- consumer_credit
+status: in_force
+dates:
+  published: '2024-05-17'
+  last_reviewed: '2026-06-19'
+field_groups:
+- D
+- E
+summary: State AI law requiring disclosure of how AI-driven consequential decisions, including lending,
+  are made. Effective date has shifted - confirm the current text before relying on it.
+source_urls:
+- https://leg.colorado.gov/bills/sb24-205
+confidence: medium
+applies_to: []
+ai_assisted: false
+related: []
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

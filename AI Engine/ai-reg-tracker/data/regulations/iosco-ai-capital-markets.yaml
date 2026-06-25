@@ -1,0 +1,37 @@
+id: iosco-ai-capital-markets
+name: 'IOSCO - AI in Capital Markets: Use Cases, Risks, and Challenges'
+body: IOSCO
+jurisdiction: Global
+regime_type: consultation
+domain:
+- markets_conduct
+status: consultation
+dates:
+  published: '2025-03-01'
+  deadlines:
+  - date: '2025-04-11'
+    note: consultation comments closed
+  last_reviewed: '2026-06-19'
+field_groups:
+- C
+- D
+- F
+summary: 'Consultation report (AIWG, led by US SEC with ESMA, FCA, MAS and others) surveying capital-markets
+  AI through investor protection, market integrity and financial stability. Most-cited risks: malicious
+  use, model/data, concentration and third-party dependency, human-AI interaction. Phase 2 may produce
+  recommendations - check for a later output.'
+source_urls:
+- https://www.iosco.org/library/pubdocs/pdf/IOSCOPD788.pdf
+related:
+- esma-algo-trading
+- amf-ai-market-participants
+- sec-ai-disclosure
+applies_to: []
+ai_assisted: false
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

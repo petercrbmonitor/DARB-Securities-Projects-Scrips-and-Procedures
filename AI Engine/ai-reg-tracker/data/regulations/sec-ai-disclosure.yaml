@@ -1,0 +1,30 @@
+id: sec-ai-disclosure
+name: SEC principles-based AI disclosure and enforcement
+body: US Securities and Exchange Commission
+jurisdiction: US
+regime_type: supervisory
+domain:
+- markets_conduct
+status: in_force
+dates:
+  published: '2025-01-01'
+  last_reviewed: '2026-06-19'
+field_groups:
+- E
+summary: 'No bespoke AI rule; the SEC treats AI as existing securities concepts - accuracy of AI claims,
+  reasonable basis, material risk disclosure - and targets AI-washing, with AI in the 2026 exam priorities.
+  Note: the 2023 predictive-data-analytics conflicts proposal was withdrawn on 12 June 2025 and is not
+  in force.'
+source_urls:
+- https://www.sec.gov/newsroom/press-releases/2023-140
+confidence: high
+related:
+- finra-ai
+applies_to: []
+ai_assisted: false
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

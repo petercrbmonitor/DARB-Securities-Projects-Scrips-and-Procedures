@@ -1,0 +1,29 @@
+id: esma-algo-trading
+name: ESMA supervisory briefing on algorithmic trading
+body: ESMA
+jurisdiction: EU
+regime_type: supervisory
+domain:
+- markets_conduct
+status: final_guidance
+dates:
+  published: '2026-02-26'
+  last_reviewed: '2026-06-19'
+field_groups:
+- D
+- F
+summary: Gives national competent authorities tools and clarified expectations for supervising firms engaged
+  in algorithmic trading under MiFID II - the markets-conduct dimension for trading AI.
+source_urls:
+- https://www.esma.europa.eu/
+related:
+- iosco-ai-capital-markets
+applies_to: []
+ai_assisted: false
+confidence: high
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

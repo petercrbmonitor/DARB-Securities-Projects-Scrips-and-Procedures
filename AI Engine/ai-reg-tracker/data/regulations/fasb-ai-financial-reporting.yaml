@@ -1,0 +1,28 @@
+id: fasb-ai-financial-reporting
+name: FASB Exposure Draft - AI in financial reporting
+body: Financial Accounting Standards Board
+jurisdiction: US
+regime_type: consultation
+domain:
+- accounting
+status: proposed
+dates:
+  published: '2026-01-15'
+  last_reviewed: '2026-06-19'
+field_groups:
+- E
+summary: Q1 2026 exposure draft proposing disclosure where AI is used in material financial-reporting
+  processes (revenue recognition, CECL loan-loss estimation, impairment, lease modifications), covering
+  nature of use, inputs, human oversight, validation and limitations.
+source_urls:
+- https://www.fasb.org/
+confidence: medium
+applies_to: []
+ai_assisted: false
+related: []
+reviewer: PSimcox
+methodology_version: AIREG-M v0.1
+changelog:
+- date: '2026-06-19'
+  change: Initial record
+  by: PSimcox

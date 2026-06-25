@@ -1,0 +1,39 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - name: Validate records
+        run: python -m ai_reg_tracker.validate
+      - name: Test
+        run: python -m pytest -q
+
+  build:
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Build outputs
+        run: |
+          python -m ai_reg_tracker.build_json
+          python -m ai_reg_tracker.build_xlsx
+          python -m ai_reg_tracker.build_changelog
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tracker-dist
+          path: dist/

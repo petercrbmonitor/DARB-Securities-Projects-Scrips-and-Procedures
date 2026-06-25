@@ -1,0 +1,11 @@
+# AI System Register field groups.
+# A regulation's `field_groups` lists which of these it drives.
+# These mirror the groups in the AI Governance & Disclosure Intelligence product.
+A: System identity (what the system is, who owns it)
+B: Role & sourcing (provider vs deployer, build vs buy, vendor)
+C: AI classification (technique, autonomy, EU AI Act risk tier)
+D: Regulatory applicability (which regimes bite)
+E: Disclosure obligations (venue, status, board oversight, deadlines)
+F: Model risk & governance (validation, human oversight, bias, limitations)
+G: Provenance / audit (evidence, reviewer, confidence, as-of state)
+H: Change / monitoring (regulatory-change capture, materiality)
