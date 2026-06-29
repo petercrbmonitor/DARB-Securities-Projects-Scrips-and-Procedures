@@ -1,0 +1,809 @@
+{
+  "schema_version": "1.0",
+  "generated": "2026-06-24",
+  "provenance": {
+    "sources": [
+      "5x RegulatorWatchdog CSV inventory (30 regulators, BIS-anchored, conservative)",
+      "3x LLM-drafted regulator tables (richer specifics, partially unverified)",
+      "AIRiskAware 2026 deep-dive (primary-source-checked; authoritative for 2026 deltas)"
+    ],
+    "rule": "Where the article conflicts with drafts, the article wins. Draft-only specifics flagged needs-verification."
+  },
+  "regulators": [
+    {
+      "regulator_id": "REG-OECD",
+      "regulator": "OECD",
+      "jurisdiction": "Global",
+      "region": "Global",
+      "domain": "Cross-sector (policy)",
+      "posture": "AI-specific",
+      "key_framework": "OECD AI Principles",
+      "source_label": "OECD AI Principles",
+      "canonical_url": "https://oecd.ai/en/ai-principles",
+      "implications": "Widely used baseline for trustworthy AI (robustness, transparency, accountability, human-centred values); cross-border policy anchor for enterprise AI governance.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-FSB",
+      "regulator": "FSB",
+      "jurisdiction": "Global",
+      "region": "Global",
+      "domain": "Financial stability",
+      "posture": "AI-specific",
+      "key_framework": "Sound Practices for Responsible Adoption of AI; Financial Stability Implications of AI",
+      "source_label": "FSB AI page",
+      "canonical_url": "https://www.fsb.org/work-of-the-fsb/financial-innovation-and-structural-change/artificial-intelligence/",
+      "implications": "Pushes institution-wide AI governance across the AI lifecycle, board/senior-management focus, third-party/vendor dependence, and financial-stability vulnerabilities.",
+      "source_tag": "capco",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-016",
+          "instrument": "'12 sound practices' for AI adoption",
+          "type": "Report",
+          "status": "Unknown",
+          "date": "2026",
+          "supersedes": "",
+          "verification_status": "needs-verification",
+          "notes": "Practice count and 2026 consultation status cited only in draft - confirm against FSB primary source."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-BCBS",
+      "regulator": "BCBS / BIS",
+      "jurisdiction": "Global",
+      "region": "Global",
+      "domain": "Banking (prudential)",
+      "posture": "Technology-neutral",
+      "key_framework": "BIS/FSI work on regulating AI in finance; BCBS work on AI/ML, model risk, operational resilience, third-party risk",
+      "source_label": "BIS FSI Insights 63",
+      "canonical_url": "https://www.bis.org/",
+      "implications": "Treats AI as an extension of prudential governance and model risk management - explainability, validation, data governance, accountability in core banking use cases.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-015",
+          "instrument": "'BCBS 350' AI/ML model-risk note",
+          "type": "Standard",
+          "status": "Unknown",
+          "date": "",
+          "supersedes": "",
+          "verification_status": "needs-verification",
+          "notes": "Cited only in an LLM draft; no confirmation a numbered 'BCBS 350' exists - verify before ingestion."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-IOSCO",
+      "regulator": "IOSCO",
+      "jurisdiction": "Global",
+      "region": "Global",
+      "domain": "Securities",
+      "posture": "Technology-neutral",
+      "key_framework": "Work on AI in capital markets and conduct/market-integrity implications",
+      "source_label": "IOSCO AI search",
+      "canonical_url": "https://www.iosco.org/",
+      "implications": "Relevant for broker-dealers, exchanges, asset managers using AI in advice, surveillance, market-abuse detection, investor comms; expect conduct, transparency, market-integrity controls.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-IAIS",
+      "regulator": "IAIS",
+      "jurisdiction": "Global",
+      "region": "Global",
+      "domain": "Insurance",
+      "posture": "Technology-neutral",
+      "key_framework": "Insurance supervisory work applying AI governance, model and consumer-protection expectations",
+      "source_label": "IAIS publications",
+      "canonical_url": "https://www.iaisweb.org/",
+      "implications": "Important for bancassurance/insurance affiliates - underwriting fairness, explainability, governance, customer outcomes.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-FATF",
+      "regulator": "FATF",
+      "jurisdiction": "Global",
+      "region": "Global",
+      "domain": "AML/CFT",
+      "posture": "Technology-neutral",
+      "key_framework": "AI use in AML/CFT under risk-based compliance frameworks",
+      "source_label": "FATF",
+      "canonical_url": "https://www.fatf-gafi.org/",
+      "implications": "Supports AI-enabled surveillance and fraud detection but requires explainable controls, data quality, and oversight where AI influences suspicious-activity monitoring.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-EU",
+      "regulator": "European Union / ESAs (ESMA, EBA, EIOPA)",
+      "jurisdiction": "EU",
+      "region": "Europe",
+      "domain": "Cross-sector financial",
+      "posture": "AI-specific",
+      "key_framework": "EU AI Act (Reg. (EU) 2024/1689) plus sectoral financial rules",
+      "source_label": "EU AI Act portal",
+      "canonical_url": "https://artificialintelligenceact.eu/",
+      "implications": "High-risk AI use cases require stronger controls on data governance, human oversight, logging, monitoring, documentation; map use cases against both AI Act and sector rules.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-003",
+          "instrument": "EU AI Act - Reg. (EU) 2024/1689",
+          "type": "Regulation",
+          "status": "Phasing in",
+          "date": "2024-08",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Prohibited practices and high-risk obligations phase in through 2026-2027; credit scoring + life/health insurance pricing are high-risk."
+        },
+        {
+          "framework_id": "FW-020",
+          "instrument": "ISO/IEC 42001 & 23894",
+          "type": "International standards",
+          "status": "Published",
+          "date": "",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Referenced by APRA as the de facto recognised control frameworks; cross-jurisdiction relevance."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-ECB",
+      "regulator": "ECB / SSM",
+      "jurisdiction": "Euro area",
+      "region": "Europe",
+      "domain": "Banking (prudential)",
+      "posture": "Technology-neutral",
+      "key_framework": "Existing prudential governance, model risk, outsourcing, operational resilience applied to AI",
+      "source_label": "ECB banking supervision",
+      "canonical_url": "https://www.bankingsupervision.europa.eu/",
+      "implications": "Significant institutions should expect AI reviewed through governance, internal controls, and model-risk lenses rather than as a standalone carve-out.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-FCA",
+      "regulator": "FCA",
+      "jurisdiction": "UK",
+      "region": "Europe",
+      "domain": "Conduct",
+      "posture": "Technology-neutral",
+      "key_framework": "AI Update (2024); existing rules apply (Consumer Duty, SM&CR, operational resilience); sandbox/innovation pathways",
+      "source_label": "FCA AI and innovation",
+      "canonical_url": "https://www.fca.org.uk/",
+      "implications": "Firms remain accountable under conduct, Consumer Duty, operational resilience and SM&CR-style governance even when using third-party or embedded AI tools.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-008",
+          "instrument": "FCA AI Update",
+          "type": "Guidance",
+          "status": "In force",
+          "date": "2024",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Principles-based; existing rules apply (Consumer Duty, SM&CR, op resilience)."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-PRA",
+      "regulator": "PRA / Bank of England",
+      "jurisdiction": "UK",
+      "region": "Europe",
+      "domain": "Banking (prudential)",
+      "posture": "Technology-neutral",
+      "key_framework": "SS1/23 Model Risk Management Principles and operational resilience applied to AI/ML",
+      "source_label": "Bank of England AI",
+      "canonical_url": "https://www.bankofengland.co.uk/prudential-regulation",
+      "implications": "Prudentially important firms should classify many AI systems as model-risk-bearing, requiring validation, controls, clear ownership.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-009",
+          "instrument": "SS1/23 Model Risk Management Principles",
+          "type": "Supervisory statement",
+          "status": "In force",
+          "date": "2023",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Extends model-risk discipline to AI for PRA-regulated firms."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-ICO",
+      "regulator": "ICO",
+      "jurisdiction": "UK",
+      "region": "Europe",
+      "domain": "Data protection",
+      "posture": "Hybrid",
+      "key_framework": "AI and data protection guidance",
+      "source_label": "ICO AI guidance",
+      "canonical_url": "https://ico.org.uk/",
+      "implications": "Any AI using personal data needs lawful basis, transparency, minimisation, and governance around automated decision-making and fairness.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-FED",
+      "regulator": "Federal Reserve / OCC / FDIC",
+      "jurisdiction": "US",
+      "region": "North America",
+      "domain": "Banking (prudential)",
+      "posture": "Technology-neutral",
+      "key_framework": "SR 26-2 (Apr 2026) Model Risk Management - supersedes SR 11-7; safety-and-soundness expectations extended to AI/ML",
+      "source_label": "Fed SR 26-2",
+      "canonical_url": "https://www.federalreserve.gov/supervisionreg/srletters/sr2602.htm",
+      "implications": "Treat AI systems used for material decisions as governed models requiring validation, change management, bias review, vendor oversight. SR 26-2 explicitly extends MRM discipline to AI/ML.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-001",
+          "instrument": "SR 26-2 Model Risk Management",
+          "type": "Supervisory letter",
+          "status": "In force",
+          "date": "2026-04",
+          "supersedes": "SR 11-7",
+          "verification_status": "verified",
+          "notes": "Supersedes SR 11-7; explicitly extends model-risk discipline to AI/ML."
+        },
+        {
+          "framework_id": "FW-002",
+          "instrument": "SR 11-7 Model Risk Management",
+          "type": "Supervisory letter",
+          "status": "Superseded",
+          "date": "2011-04",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Historic MRM baseline; superseded by SR 26-2."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-SEC",
+      "regulator": "SEC",
+      "jurisdiction": "US",
+      "region": "North America",
+      "domain": "Securities",
+      "posture": "Hybrid",
+      "key_framework": "Guidance on AI in investment advice / broker-dealer activity; Predictive Data Analytics proposal; AI-washing enforcement focus",
+      "source_label": "SEC PDA proposal statement",
+      "canonical_url": "https://www.sec.gov/",
+      "implications": "Broker-dealers/advisers may need to identify and neutralise AI-related conflicts in investor interactions; AI marketing claims must be supportable.",
+      "source_tag": "sec",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-018",
+          "instrument": "Predictive Data Analytics rule",
+          "type": "Proposed rule",
+          "status": "Proposed",
+          "date": "",
+          "supersedes": "",
+          "verification_status": "needs-verification",
+          "notes": "Proposal status/scope shifts; confirm current status (proposed vs withdrawn vs final) before relying on it."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-FINRA",
+      "regulator": "FINRA",
+      "jurisdiction": "US",
+      "region": "North America",
+      "domain": "Securities (SRO)",
+      "posture": "Technology-neutral",
+      "key_framework": "AI topic hub; Regulatory Notice 24-09; guidance on AI in customer-facing communications",
+      "source_label": "FINRA AI",
+      "canonical_url": "https://www.finra.org/rules-guidance/key-topics/artificial-intelligence",
+      "implications": "Treats AI as subject to existing technology-neutral rules - communications, supervision, surveillance, suitability-style processes, third-party tools.",
+      "source_tag": "finra",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-013",
+          "instrument": "Regulatory Notice 24-09",
+          "type": "Regulatory notice",
+          "status": "In force",
+          "date": "2024",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Confirms FINRA rules are technology-neutral and apply to AI/embedded tools."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-CFPB",
+      "regulator": "CFPB",
+      "jurisdiction": "US",
+      "region": "North America",
+      "domain": "Consumer finance",
+      "posture": "Technology-neutral",
+      "key_framework": "Existing consumer financial protection and automated-decisioning scrutiny",
+      "source_label": "CFPB",
+      "canonical_url": "https://www.consumerfinance.gov/",
+      "implications": "AI affecting retail credit, servicing or chatbots can trigger UDAAP, adverse-action, fair-lending and transparency concerns.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-FTC",
+      "regulator": "FTC",
+      "jurisdiction": "US",
+      "region": "North America",
+      "domain": "Cross-sector conduct",
+      "posture": "Technology-neutral",
+      "key_framework": "Unfair/deceptive practices, automated decision-making, AI claims",
+      "source_label": "FTC AI",
+      "canonical_url": "https://www.ftc.gov/",
+      "implications": "AI claims, explainability, fairness and deceptive product statements create enforcement exposure, especially for client-facing features and marketing.",
+      "source_tag": "sec",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-NIST",
+      "regulator": "NIST",
+      "jurisdiction": "US",
+      "region": "North America",
+      "domain": "Cross-sector (standards)",
+      "posture": "AI-specific",
+      "key_framework": "AI Risk Management Framework (AI RMF 1.0, Jan 2023)",
+      "source_label": "NIST AI RMF",
+      "canonical_url": "https://www.nist.gov/itl/ai-risk-management-framework",
+      "implications": "Not a financial regulator but a strong control taxonomy for mapping policy, testing, monitoring and governance requirements into an enterprise framework.",
+      "source_tag": "capco",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-012",
+          "instrument": "AI RMF 1.0",
+          "type": "Voluntary framework",
+          "status": "Published",
+          "date": "2023-01",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Govern / Map / Measure / Manage; widely used as control taxonomy."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-MAS",
+      "regulator": "MAS",
+      "jurisdiction": "Singapore",
+      "region": "Asia-Pacific",
+      "domain": "Cross-sector financial",
+      "posture": "AI-specific",
+      "key_framework": "FEAT principles; Veritas methodology; AI Risk Management Guidelines (consultation Nov 2025, finalisation expected 2026); AI Verify; Notice FSM-N20",
+      "source_label": "MAS AI and data analytics",
+      "canonical_url": "https://www.mas.gov.sg/",
+      "implications": "Strong benchmark for fairness, ethics, accountability, transparency in financial AI; more prescriptive than UK/AU; mandatory inventory and lifecycle controls proposed.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-010",
+          "instrument": "AI Risk Management Guidelines",
+          "type": "Guidelines (consultation)",
+          "status": "Consultation",
+          "date": "2025-11",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Consultation Nov 2025; finalisation expected 2026."
+        },
+        {
+          "framework_id": "FW-011",
+          "instrument": "FEAT Principles / Veritas",
+          "type": "Principles + methodology",
+          "status": "In force",
+          "date": "2018",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Fairness, Ethics, Accountability, Transparency; Veritas + AI Verify provide testing tools."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-HKMA",
+      "regulator": "HKMA",
+      "jurisdiction": "Hong Kong",
+      "region": "Asia-Pacific",
+      "domain": "Banking",
+      "posture": "Technology-neutral",
+      "key_framework": "High-level AI principles; consumer protection / regtech / supervisory expectations",
+      "source_label": "HKMA",
+      "canonical_url": "https://www.hkma.gov.hk/",
+      "implications": "Important for chatbot, regtech, fraud and operational AI deployments; emphasis on governance and implementation discipline.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-SFC",
+      "regulator": "SFC Hong Kong",
+      "jurisdiction": "Hong Kong",
+      "region": "Asia-Pacific",
+      "domain": "Securities",
+      "posture": "Technology-neutral",
+      "key_framework": "Existing conduct and algorithmic controls applied to AI in markets; GenAI language-model circular",
+      "source_label": "SFC Hong Kong",
+      "canonical_url": "https://www.sfc.hk/",
+      "implications": "Securities firms should expect AI oversight in trading, client communications, surveillance and outsourcing governance.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-CHINA",
+      "regulator": "China CAC / PBOC / NFRA / CSRC",
+      "jurisdiction": "China",
+      "region": "Asia-Pacific",
+      "domain": "Cross-sector (prescriptive)",
+      "posture": "AI-specific",
+      "key_framework": "Generative AI, recommendation algorithms, deep synthesis, and sector supervision",
+      "source_label": "CAC China",
+      "canonical_url": "https://www.cac.gov.cn/",
+      "implications": "One of the more prescriptive regimes - content, security, algorithm filing and sector controls that can materially affect model deployment architecture.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-JFSA",
+      "regulator": "JFSA",
+      "jurisdiction": "Japan",
+      "region": "Asia-Pacific",
+      "domain": "Cross-sector financial",
+      "posture": "Technology-neutral",
+      "key_framework": "Existing financial regulation plus AI governance guidance references",
+      "source_label": "JFSA",
+      "canonical_url": "https://www.fsa.go.jp/en/",
+      "implications": "Typically principles-based, but material AI use still raises governance, outsourcing and explainability expectations.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-017",
+          "instrument": "AI model-risk framework / 48-hr incident notification",
+          "type": "Framework",
+          "status": "Unknown",
+          "date": "2026",
+          "supersedes": "",
+          "verification_status": "needs-verification",
+          "notes": "Specific 48-hour notification and Q3-2026 timing appear only in a draft - confirm."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-APRA",
+      "regulator": "APRA / ASIC / RBA",
+      "jurisdiction": "Australia",
+      "region": "Asia-Pacific",
+      "domain": "Prudential + conduct",
+      "posture": "AI-specific",
+      "key_framework": "APRA 30 Apr 2026 AI industry letter (expects ISO/IEC 42001 & 23894, integrated assurance); CPS 230, CPS 234, CPG 234 (extended to AI), CPS 220; ASIC 8 May 2026 cyber-resilience letter",
+      "source_label": "APRA",
+      "canonical_url": "https://www.apra.gov.au/",
+      "implications": "Most explicit prudential statement on AI to date. Integrated assurance across cyber, data governance, model performance, operational resilience, privacy, conduct. AI governance failures treated as licence/duty-of-care issues.",
+      "source_tag": "airiskaware",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-004",
+          "instrument": "APRA AI industry letter",
+          "type": "Industry letter",
+          "status": "In force",
+          "date": "2026-04-30",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Expects ISO/IEC 42001 & 23894 and integrated assurance across six risk categories."
+        },
+        {
+          "framework_id": "FW-005",
+          "instrument": "CPS 230 Operational Risk Management",
+          "type": "Prudential standard",
+          "status": "In force",
+          "date": "2025-07-01",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "AI may be a material service / material model."
+        },
+        {
+          "framework_id": "FW-006",
+          "instrument": "CPS 234 / CPG 234 Information Security",
+          "type": "Standard + guide",
+          "status": "In force",
+          "date": "",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "CPG 234 practice guide now extended to AI."
+        },
+        {
+          "framework_id": "FW-007",
+          "instrument": "ASIC cyber-resilience letter",
+          "type": "Conduct letter",
+          "status": "In force",
+          "date": "2026-05-08",
+          "supersedes": "",
+          "verification_status": "verified",
+          "notes": "Frames frontier AI as part of directors' duty of care."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-QCB",
+      "regulator": "QCB / QFCRA",
+      "jurisdiction": "Qatar",
+      "region": "Middle East",
+      "domain": "Banking",
+      "posture": "Technology-neutral",
+      "key_framework": "Emerging AI governance in finance noted in comparative supervisory work",
+      "source_label": "QCB",
+      "canonical_url": "https://www.qcb.gov.qa/",
+      "implications": "Relevant for regional banking operations; likely focus is governance, outsourcing, data handling, prudent deployment.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-DFSA",
+      "regulator": "DFSA / ADGM FSRA",
+      "jurisdiction": "UAE",
+      "region": "Middle East",
+      "domain": "Cross-sector (free-zone)",
+      "posture": "Hybrid",
+      "key_framework": "Financial free-zone AI/ML guidance plus national AI governance developments",
+      "source_label": "DFSA",
+      "canonical_url": "https://www.dfsa.ae/",
+      "implications": "Important for cross-border hubs using AI in wealth, markets and compliance tooling, especially outsourcing and data-transfer issues.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-OSFI",
+      "regulator": "OSFI / FCAC / OSC / CSA",
+      "jurisdiction": "Canada",
+      "region": "North America",
+      "domain": "Prudential + conduct",
+      "posture": "Technology-neutral",
+      "key_framework": "AI governed through prudential, consumer, privacy and securities rules; OSFI Guideline E-23 (model risk)",
+      "source_label": "OSFI",
+      "canonical_url": "https://www.osfi-bsif.gc.ca/",
+      "implications": "AI in banking and wealth products should be controlled through model risk, outsourcing, privacy and fair-outcomes frameworks.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": [
+        {
+          "framework_id": "FW-014",
+          "instrument": "Guideline E-23 Model Risk Management",
+          "type": "Guideline",
+          "status": "Finalised",
+          "date": "2025",
+          "supersedes": "",
+          "verification_status": "needs-verification",
+          "notes": "Reported effective ~2027 and AI/ML explicitly in scope - confirm scope and effective date vs OSFI primary source."
+        }
+      ]
+    },
+    {
+      "regulator_id": "REG-BR",
+      "regulator": "BCB / CVM / SUSEP / LGPD",
+      "jurisdiction": "Brazil",
+      "region": "Latin America",
+      "domain": "Cross-sector financial",
+      "posture": "Technology-neutral",
+      "key_framework": "AI governance emerging alongside data protection (LGPD) and financial supervision",
+      "source_label": "BCB",
+      "canonical_url": "https://www.bcb.gov.br/",
+      "implications": "Material for Latin America operations, especially customer data, model fairness and prudential accountability.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-ZA",
+      "regulator": "SARB / FSCA / PA",
+      "jurisdiction": "South Africa",
+      "region": "Africa",
+      "domain": "Conduct + prudential",
+      "posture": "Technology-neutral",
+      "key_framework": "Existing financial rules and data/privacy law applied to AI",
+      "source_label": "FSCA",
+      "canonical_url": "https://www.fsca.co.za/",
+      "implications": "Relevant for conduct, model governance and outsourcing in bank and insurer use cases.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-IN",
+      "regulator": "RBI / SEBI / IRDAI",
+      "jurisdiction": "India",
+      "region": "Asia-Pacific",
+      "domain": "Cross-sector financial",
+      "posture": "Technology-neutral",
+      "key_framework": "Existing sectoral regulation plus digital/AI governance developments",
+      "source_label": "RBI",
+      "canonical_url": "https://www.rbi.org.in/",
+      "implications": "AI in lending, onboarding, fraud and capital markets raises explainability, outsourcing and fairness issues even absent a dedicated financial AI rulebook.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    },
+    {
+      "regulator_id": "REG-CH",
+      "regulator": "Swiss FINMA",
+      "jurisdiction": "Switzerland",
+      "region": "Europe",
+      "domain": "Cross-sector (prudential)",
+      "posture": "Technology-neutral",
+      "key_framework": "Technology-neutral prudential and outsourcing supervision; AI risk-management guidance",
+      "source_label": "FINMA",
+      "canonical_url": "https://www.finma.ch/",
+      "implications": "Important for cross-border wealth and banking operations; focus on accountability, model governance, data risk and resilience.",
+      "source_tag": "bis",
+      "verification_status": "verified",
+      "frameworks": []
+    }
+  ],
+  "control_themes": [
+    {
+      "control_id": "CTRL-01",
+      "theme": "AI use-case inventory & risk classification",
+      "description": "Complete, current register of AI use cases with high/medium/low risk tiering and entity/business-line ownership.",
+      "supporting_regulators_examples": "EU AI Act, SR 26-2, APRA, MAS, BCBS, OSFI E-23",
+      "suggested_product_module": "Model registry / inventory",
+      "priority": "Critical"
+    },
+    {
+      "control_id": "CTRL-02",
+      "theme": "Model risk management",
+      "description": "AI treated as governed models: identification of scope, independent validation, change management, vendor oversight.",
+      "supporting_regulators_examples": "SR 26-2, PRA SS1/23, BCBS, ECB, MAS, OSFI",
+      "suggested_product_module": "MRM workflow + validation suite",
+      "priority": "Critical"
+    },
+    {
+      "control_id": "CTRL-03",
+      "theme": "Board & senior-management accountability",
+      "description": "Board-approved AI policy, named owners, attestation and escalation paths.",
+      "supporting_regulators_examples": "FCA SM&CR, SR 26-2, APRA, MAS, OSFI, FSB",
+      "suggested_product_module": "Governance / attestation dashboards",
+      "priority": "Critical"
+    },
+    {
+      "control_id": "CTRL-04",
+      "theme": "Bias & fairness testing",
+      "description": "Defined methodology, demographic coverage, frequency and remediation for protected-attribute and proxy-discrimination risk.",
+      "supporting_regulators_examples": "EU AI Act, MAS FEAT, CFPB, ICO",
+      "suggested_product_module": "Fairness metrics + adverse-action support",
+      "priority": "High"
+    },
+    {
+      "control_id": "CTRL-05",
+      "theme": "Explainability & transparency",
+      "description": "Model documentation/cards, explanation methods, consumer disclosure and automated-decision transparency.",
+      "supporting_regulators_examples": "EU AI Act, FINMA, OSFI, CFPB, ICO",
+      "suggested_product_module": "Model cards + explanation tooling",
+      "priority": "High"
+    },
+    {
+      "control_id": "CTRL-06",
+      "theme": "Data governance & privacy",
+      "description": "Lawful basis, lineage, minimisation, data-quality and protection across the AI lifecycle.",
+      "supporting_regulators_examples": "ICO, EU AI Act, BaFin/DORA, MAS",
+      "suggested_product_module": "Data lineage + privacy controls",
+      "priority": "High"
+    },
+    {
+      "control_id": "CTRL-07",
+      "theme": "Third-party / vendor & concentration risk",
+      "description": "Vendor due diligence, contract clauses, audit rights, exit planning and concentration monitoring for AI/cloud providers.",
+      "supporting_regulators_examples": "DORA, US interagency TPRM, MAS, APRA, OSFI, FSB",
+      "suggested_product_module": "Vendor assessment + clause library",
+      "priority": "High"
+    },
+    {
+      "control_id": "CTRL-08",
+      "theme": "Lifecycle monitoring & drift detection",
+      "description": "Performance thresholds, drift alerts and periodic (e.g. quarterly) board reporting.",
+      "supporting_regulators_examples": "BCBS, FSB, MAS, OSFI, APRA",
+      "suggested_product_module": "Monitoring + reporting packs",
+      "priority": "High"
+    },
+    {
+      "control_id": "CTRL-09",
+      "theme": "Operational resilience",
+      "description": "AI as material service/model under resilience regimes; BCM integration and testing.",
+      "supporting_regulators_examples": "APRA CPS 230, DORA, op-resilience rules",
+      "suggested_product_module": "Resilience mapping",
+      "priority": "Medium"
+    },
+    {
+      "control_id": "CTRL-10",
+      "theme": "Incident management & regulatory notification",
+      "description": "Incident taxonomy, notification workflows and post-mortems aligned to each regulator's timelines.",
+      "supporting_regulators_examples": "DORA, FSB, APRA, (JFSA - verify)",
+      "suggested_product_module": "Incident workflow",
+      "priority": "Medium"
+    },
+    {
+      "control_id": "CTRL-11",
+      "theme": "Audit & assurance",
+      "description": "Internal-audit AI coverage, external/independent assurance and inspection readiness.",
+      "supporting_regulators_examples": "APRA integrated assurance, SR 26-2, MAS",
+      "suggested_product_module": "Assurance evidence store",
+      "priority": "Medium"
+    },
+    {
+      "control_id": "CTRL-12",
+      "theme": "Conduct & marketing integrity",
+      "description": "Control of AI-washing, supportable AI claims and conduct in advice/communications.",
+      "supporting_regulators_examples": "SEC, FTC, FINRA, FCA Consumer Duty",
+      "suggested_product_module": "Claims / disclosure review",
+      "priority": "Medium"
+    }
+  ],
+  "verified_updates_2026": [
+    {
+      "update_id": "UPD-01",
+      "update": "Fed SR 26-2 supersedes SR 11-7",
+      "date": "April 2026",
+      "action_for_dev": "Update key_framework + frameworks for REG-FED; SR 11-7 is now historic.",
+      "source": "airiskaware (primary-source-checked)"
+    },
+    {
+      "update_id": "UPD-02",
+      "update": "APRA 30 Apr 2026 AI industry letter",
+      "date": "2026-04-30",
+      "action_for_dev": "Most explicit prudential AI statement; expects ISO/IEC 42001 & 23894 + integrated assurance.",
+      "source": "airiskaware"
+    },
+    {
+      "update_id": "UPD-03",
+      "update": "ASIC 8 May 2026 cyber-resilience letter",
+      "date": "2026-05-08",
+      "action_for_dev": "Frames frontier AI as directors' duty of care.",
+      "source": "airiskaware"
+    },
+    {
+      "update_id": "UPD-04",
+      "update": "MAS AI Risk Management Guidelines",
+      "date": "Consultation Nov 2025",
+      "action_for_dev": "Prescriptive AI obligations; finalisation expected 2026.",
+      "source": "airiskaware"
+    },
+    {
+      "update_id": "UPD-05",
+      "update": "FCA AI Update + PRA SS1/23",
+      "date": "2024 / 2023",
+      "action_for_dev": "UK principles-based; existing rules apply; SS1/23 extends MRM to AI.",
+      "source": "airiskaware"
+    },
+    {
+      "update_id": "UPD-06",
+      "update": "EU AI Act = Reg. (EU) 2024/1689",
+      "date": "2024-08 onward",
+      "action_for_dev": "Use the regulation citation, not just 'EU AI Act'.",
+      "source": "established"
+    }
+  ]
+}
