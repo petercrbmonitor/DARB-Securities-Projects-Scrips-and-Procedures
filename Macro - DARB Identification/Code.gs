@@ -2052,10 +2052,12 @@ function cleanupActiveTab_impl_() {
   var total = counts['Add'] + counts['Watchlist'] + counts['FR Exclude'] +
     counts['Confirmed Exclude'] + counts['In DB'];
   logHistory_('Clean-up This Tab', name, total + ' routed' +
-    (counts._dups ? ' - ' + counts._dups + ' already present (deduped)' : '') +
+    (counts._updated ? ' (' + counts._updated + ' stamped onto existing list rows)' : '') +
+    (counts._dups ? ' - ' + counts._dups + ' already staged (deduped)' : '') +
     (skipped ? ' - ' + skipped + ' skipped (incomplete)' : ''));
   toast_('Clean-up "' + name + '": ' + total + ' routed.' +
-    (counts._dups ? ' ' + counts._dups + ' already present (deduped).' : '') +
+    (counts._updated ? ' ' + counts._updated + ' updated existing.' : '') +
+    (counts._dups ? ' ' + counts._dups + ' already staged (deduped).' : '') +
     (skipped ? ' ' + skipped + ' skipped - fill required fields.' : ''));
 }
 
@@ -2075,7 +2077,8 @@ function processReviews_impl_() {
     'Add ' + counts['Add'] + ', Watchlist ' + counts['Watchlist'] +
     ', FR Exclude ' + counts['FR Exclude'] + ', Confirmed Exclude ' + counts['Confirmed Exclude'] +
     ', In DB ' + counts['In DB'] +
-    (counts._dups ? ' - ' + counts._dups + ' already present (deduped)' : '') +
+    (counts._updated ? ' (' + counts._updated + ' stamped onto existing list rows)' : '') +
+    (counts._dups ? ' - ' + counts._dups + ' already staged (deduped)' : '') +
     (skipped ? ' - ' + skipped + ' row(s) skipped (incomplete)' : ''));
   toast_('Routed - Add: ' + counts['Add'] + ', Watchlist: ' + counts['Watchlist'] +
     ', FR Excl: ' + counts['FR Exclude'] + ', Conf Excl: ' + counts['Confirmed Exclude'] +
@@ -2096,8 +2099,10 @@ function routeSheetRows_(sh, counts) {
     if (r[3]) return;                                 // already routed (date stamped)
     if (ASSIGN_OPTIONS.indexOf(assignment) < 0) { skipped++; return; }
     if (!requiredOk_(assignment, r)) { skipped++; return; }
-    if (routeRow_(sh, i + 2, r, assignment)) counts[assignment]++;
-    else counts._dups = (counts._dups || 0) + 1;       // already on destination
+    var status = routeRow_(sh, i + 2, r, assignment);  // 'added' | 'updated' | 'dup' | 'indb'
+    if (status === 'dup') counts._dups = (counts._dups || 0) + 1;     // already staged elsewhere
+    else counts[assignment]++;                          // added / updated / in-DB all count as routed
+    if (status === 'updated') counts._updated = (counts._updated || 0) + 1;
   });
   return skipped;
 }
@@ -2137,9 +2142,12 @@ function requiredOk_(assignment, r) {
 /**
  * Route one reviewed intern row to its destination. Routed rows are NOT deleted -
  * Ticker Reviewed Date is stamped and the row is struck through for audit.
- * Skips creating a duplicate when the company (by ticker, or name if ticker blank) is
- * already on the destination list. Returns true if a destination row was appended, false
- * if it was a duplicate skip. (An "In DB" assignment writes nothing - already in Current DB.)
+ * When the company (by ticker, or name if ticker blank) is already on a reference list
+ * (Watchlist / FR Exclude / Confirmed Exclude), the review is STAMPED onto that existing
+ * row rather than dropped - otherwise the routed row vanishes and the pre-existing row keeps
+ * a blank Ticker Reviewed Date, so Crosscheck re-surfaces the ticker for review every cycle.
+ * Returns a status string: 'added' (new dest row), 'updated' (stamped an existing dest row),
+ * 'dup' (already staged on Adds - skipped) or 'indb' (In DB - nothing to write).
  * Intern row (18 cols):
  *   0 Company | 1 Ticker | 2 RevAssign | 3 RevDate | 4 Analyst | 5 Primary Business Name |
  *   6 Description | 7 Inclusion Rationale | 8 Tiering Rationale | 9 Tier | 10 Sector |
@@ -2156,21 +2164,27 @@ function routeRow_(internSh, rowNum, r, assignment) {
   var desc = r[6], inclusion = r[7], tiering = r[8], tier = r[9], sector = r[10], pureplay = r[11];
   var websites = r[12], sourceDocs = r[13];
   var source = r[14], note = r[15];
-  var appended = true;
+  var status = 'added';
 
   if (assignment === 'Watchlist') {
     var wl = ss.getSheetByName('Watchlist');
-    if (findExistingRow_(wl, 1, 2, nT, nN) > 0) {
-      appended = false;                              // already on Watchlist - no duplicate
+    var wlRow = findExistingRow_(wl, 1, 2, nT, nN);
+    if (wlRow > 0) {
+      // Already on the Watchlist (commonly a bare export / legacy row) - stamp the review onto
+      // it so the reviewed date is recorded and the ticker stops re-surfacing in Crosscheck.
+      stampReviewOnDest_(wl, wlRow, assignment, today, analyst, inclusion, tier, source, note, sector, true);
+      status = 'updated';
     } else {
       wl.appendRow([company, ticker, assignment, today, analyst, inclusion,
-        tier, source, note, tickerFlag_(ticker), '', sector]); // sector -> Watchlist Sector col
+        tier, source, note, tickerFlag_(ticker), '', sector, '']); // ...Record#, Sector, ISIN (13 wide)
       formatRow_(wl, wl.getLastRow(), TABS.watchlist.header.length);
     }
   } else if (assignment === 'FR Exclude' || assignment === 'Confirmed Exclude') {
     var dest = ss.getSheetByName(assignment);
-    if (findExistingRow_(dest, 1, 2, nT, nN) > 0) {
-      appended = false;
+    var destRow = findExistingRow_(dest, 1, 2, nT, nN);
+    if (destRow > 0) {
+      stampReviewOnDest_(dest, destRow, assignment, today, analyst, inclusion, tier, source, note, sector, false);
+      status = 'updated';
     } else {
       dest.appendRow([company, ticker, assignment, today, analyst, inclusion,
         tier, source, note, tickerFlag_(ticker)]);
@@ -2180,7 +2194,7 @@ function routeRow_(internSh, rowNum, r, assignment) {
   } else if (assignment === 'Add') {
     var addsSh = ss.getSheetByName(TABS.adds.name);
     if (findExistingRow_(addsSh, 5, 7, nT, nN) > 0) {
-      appended = false;                              // already staged on Adds - no duplicate
+      status = 'dup';                               // already staged on Adds - no duplicate
     } else {
       // Adds row (17 cols): Imported?, Select, Analyst, New Record Flag, AS Business Name,
       // Primary Business Name, AlphaSense Ticker, Profile Review - Action Status, CRBM Tier,
@@ -2204,12 +2218,33 @@ function routeRow_(internSh, rowNum, r, assignment) {
       }
     }
   } else if (assignment === 'In DB') {
-    // Already in Current DB - no list to append; the row is struck through below.
+    status = 'indb';   // already in Current DB - no list to append; row is struck through below
   }
 
   internSh.getRange(rowNum, 4).setValue(today);
   internSh.getRange(rowNum, 1, 1, INTERN_WIDTH).setFontLine('line-through');
-  return appended;
+  return status;
+}
+
+/**
+ * Stamp an intern's review onto an EXISTING reference-list row (a dedup hit) so the routed
+ * decision is recorded instead of silently dropped. Writes Review Assignement + Ticker
+ * Reviewed Date + Analyst, and refreshes the Ps Note / tier / source / note (and Sector on
+ * the Watchlist) when the intern supplied a value. Reference lists share REF_SCHEMA cols 1-10;
+ * Watchlist additionally carries Sector at col 12. Stamping the reviewed date is what stops
+ * Crosscheck from re-surfacing the ticker every cycle.
+ *   col 3 Review Assignement | 4 Ticker Reviewed Date | 5 Analyst | 6 Ps Note |
+ *   7 If Add Recomended Tier | 8 Source | 9 Note | 12 Sector (Watchlist only)
+ */
+function stampReviewOnDest_(sh, row, assignment, today, analyst, inclusion, tier, source, note, sector, hasSector) {
+  sh.getRange(row, 3).setValue(assignment);                 // Review Assignement
+  sh.getRange(row, 4).setValue(today);                      // Ticker Reviewed Date
+  if (String(analyst || '').trim())   sh.getRange(row, 5).setValue(analyst);
+  if (String(inclusion || '').trim()) sh.getRange(row, 6).setValue(inclusion); // Ps Note
+  if (String(tier || '').trim())      sh.getRange(row, 7).setValue(tier);
+  if (String(source || '').trim())    sh.getRange(row, 8).setValue(source);
+  if (String(note || '').trim())      sh.getRange(row, 9).setValue(note);
+  if (hasSector && String(sector || '').trim()) sh.getRange(row, 12).setValue(sector);
 }
 
 /* ============ MOVE BETWEEN LISTS (reclassification, incl. back to Sort) ============= */
@@ -2315,13 +2350,23 @@ function moveWriteDest_(dest, d, today) {
     formatRow_(sortSh, sr, TABS.sort.header.length);
   } else if (dest === 'Watchlist') {
     var wl = ss.getSheetByName('Watchlist');
-    if (findExistingRow_(wl, 1, 2, nT, nN) > 0) return false;
+    var wlRow = findExistingRow_(wl, 1, 2, nT, nN);
+    if (wlRow > 0) {                                  // already listed - stamp the move onto it
+      stampReviewOnDest_(wl, wlRow, 'Watchlist', today, d.analyst || '', d.note || '',
+        d.tier || '', d.source, d.note || '', d.sector || '', true);
+      return false;
+    }
     wl.appendRow([d.company, d.ticker, 'Watchlist', today, d.analyst || '', d.note || '',
       d.tier || '', d.source, d.note || '', tickerFlag_(d.ticker), '', d.sector || '', '']);
     formatRow_(wl, wl.getLastRow(), TABS.watchlist.header.length);
   } else if (dest === 'FR Exclude' || dest === 'Confirmed Exclude') {
     var ex = ss.getSheetByName(dest);
-    if (findExistingRow_(ex, 1, 2, nT, nN) > 0) return false;
+    var exRow = findExistingRow_(ex, 1, 2, nT, nN);
+    if (exRow > 0) {                                  // already listed - stamp the move onto it
+      stampReviewOnDest_(ex, exRow, dest, today, d.analyst || '', d.note || '',
+        d.tier || '', d.source, d.note || '', d.sector || '', false);
+      return false;
+    }
     ex.appendRow([d.company, d.ticker, dest, today, d.analyst || '', d.note || '',
       d.tier || '', d.source, d.note || '', tickerFlag_(d.ticker)]);
     formatRow_(ex, ex.getLastRow(),

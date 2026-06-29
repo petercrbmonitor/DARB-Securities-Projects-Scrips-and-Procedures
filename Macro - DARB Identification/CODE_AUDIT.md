@@ -64,7 +64,7 @@ Still open: #4 (batch writes), #5 (ticker canonicalization), #6 (unit tests),
 | 4 | Medium | Performance | Per-row `appendRow`/`deleteRow` vs the 6-minute limit |
 | 5 | Medium | Matching | Ticker canonicalization gap (`9923:HK` vs `9923.HK`) |
 | 6 | Medium | Safety net | No automated tests / CI guard |
-| 7 | Low | Consistency | `routeRow_` Watchlist append writes 12 values, others 13 |
+| 7 | Low | Consistency | **Resolved** - `routeRow_` Watchlist append padded to 13 values |
 | 8 | Low | Docs | Stale `// 21` comment in `buildKintoneUpload` (Adds is 22 wide) |
 | 9 | Low | Config | `seedConfig_` exact-label match vs `configValue_` prefix match |
 | 10 | Info | Startup | `onOpen` re-scaffolds on every open |
