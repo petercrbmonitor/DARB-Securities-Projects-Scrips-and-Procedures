@@ -9,7 +9,10 @@ var fs = require('fs');
 var path = require('path');
 var mock = require('./gas-mock.js');
 
-var CODE_PATH = path.join(__dirname, '..', 'Macro - DARB Identification', 'Code.gs');
+/* Which macro is under test. The suites are sector-agnostic, so the same suite runs against
+ * every macro folder - `MACRO_DIR` selects one (set by test/run.js, default DARB). */
+var MACRO_DIR = process.env.MACRO_DIR || 'Macro - DARB Identification';
+var CODE_PATH = path.join(__dirname, '..', MACRO_DIR, 'Code.gs');
 (0, eval)(fs.readFileSync(CODE_PATH, 'utf8'));   // indirect eval -> Code.gs defines globals
 
 var passes = 0, fails = 0;
@@ -58,6 +61,7 @@ function finish() {
 }
 
 module.exports = {
+  macroDir: MACRO_DIR, codePath: CODE_PATH,
   mock: mock, ss: mock.ss, ok: ok, rows: rows, rowsOf: rows, setup: setup,
   internRow: internRow, ir: internRow, addsRow: addsRow, historyText: historyText, finish: finish
 };

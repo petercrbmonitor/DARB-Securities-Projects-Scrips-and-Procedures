@@ -1,13 +1,18 @@
 # Auto-deploy: GitHub -> Google Apps Script
 
-Pushes the DARB pipeline (`Macro - DARB Identification/Code.gs` + its manifest)
+Pushes the CRB pipeline (`Macro - CRB Identification/Code.gs` + its manifest)
 to Google Apps Script via [`clasp`](https://github.com/google/clasp) in GitHub
 Actions. Two environments, selected by branch.
 
-Workflow: `.github/workflows/deploy-apps-script.yml`. That one workflow deploys every macro
-in the repo as a matrix job - DARB uses `SCRIPT_ID` / `SCRIPT_ID_STAGING`, CRB uses
-`SCRIPT_ID_CRB` / `SCRIPT_ID_CRB_STAGING` (see `Macro - CRB Identification/DEPLOY.md`). The
-syntax and test gates cover **both** macros, so a break in either stops both deploys.
+Workflow: `.github/workflows/deploy-apps-script.yml`. One workflow deploys every macro in
+the repo as a matrix job, each with its own Script ID secrets, so the CRB and DARB workbooks
+are independent targets that share one `CLASPRC_JSON` credential. The syntax and test gates
+cover **both** macros, so a break in either stops both deploys.
+
+> **Not live yet.** Until a `SCRIPT_ID_CRB` secret exists, a `production` push skips the CRB
+> deploy with a warning instead of failing. Once the CRB production workbook is created and
+> the secret is set, flip `prod_required` to `'true'` for the CRB entry in the workflow matrix
+> so a missing Script ID is treated as a misconfiguration.
 
 > Updating the workbook **by hand** (paste the file, reload, rescaffold, verify) is in
 > `REBOOT.md`. The post-update checks there apply after an automated deploy too - `clasp`
@@ -17,14 +22,14 @@ syntax and test gates cover **both** macros, so a break in either stops both dep
 
 | Branch       | Role            | Deploys to                              |
 |--------------|-----------------|-----------------------------------------|
-| `main`       | test / staging  | the **staging** script (`SCRIPT_ID_STAGING`) |
-| `production` | release         | the **live** workbook (`SCRIPT_ID`)     |
+| `main`       | test / staging  | the **staging** script (`SCRIPT_ID_CRB_STAGING`) |
+| `production` | release         | the **live** workbook (`SCRIPT_ID_CRB`)     |
 
 Day to day: land changes on `main`, let them deploy to staging and be checked,
 then **promote to production** by merging `main` into `production` (a PR is the
 tidy way). Merging into `production` triggers the live deploy.
 
-Until a `SCRIPT_ID_STAGING` secret is set, pushes to `main` simply skip the
+Until a `SCRIPT_ID_CRB_STAGING` secret is set, pushes to `main` simply skip the
 deploy step (the syntax and test gates still run), so the test branch never
 touches production. **That is the current state**: a green run on `main` means
 the gates passed, not that any workbook changed. Only `production` deploys.
@@ -33,9 +38,9 @@ the gates passed, not that any workbook changed. Only `production` deploys.
 
 1. A push to `main` or `production` (or a manual **Run workflow**) starts the job.
 2. `node --check` runs as a gate.
-3. The job picks the Script ID from the branch (`production` -> `SCRIPT_ID`,
-   anything else -> `SCRIPT_ID_STAGING`), writes the clasp credentials and a
-   `.clasp.json`, then runs `clasp push -f` from the `Macro - DARB Identification`
+3. The job picks the Script ID from the branch (`production` -> `SCRIPT_ID_CRB`,
+   anything else -> `SCRIPT_ID_CRB_STAGING`), writes the clasp credentials and a
+   `.clasp.json`, then runs `clasp push -f` from the `Macro - CRB Identification`
    folder. A committed `.claspignore` means only `Code.gs` + `appsscript.json`
    are pushed.
 
@@ -48,11 +53,11 @@ You need these repository secrets. **Important:** the deploy target is the
 **Script ID**, which is *not* the spreadsheet ID in the sheet URL
 (`.../spreadsheets/d/<SPREADSHEET_ID>/edit`). They are different IDs.
 
-| Secret              | Required | Value                                                       |
-|---------------------|----------|-------------------------------------------------------------|
-| `CLASPRC_JSON`      | yes      | full contents of `~/.clasprc.json` after `clasp login`      |
-| `SCRIPT_ID`         | yes      | Script ID of the **production** workbook                    |
-| `SCRIPT_ID_STAGING` | optional | Script ID of a **separate staging** workbook                |
+| Secret                  | Required | Value                                                        |
+|-------------------------|----------|--------------------------------------------------------------|
+| `CLASPRC_JSON`          | yes      | full contents of `~/.clasprc.json` after `clasp login` (shared with the DARB deploy) |
+| `SCRIPT_ID_CRB`         | yes      | Script ID of the **CRB production** workbook                 |
+| `SCRIPT_ID_CRB_STAGING` | optional | Script ID of a **separate CRB staging** workbook             |
 
 ### Get a Script ID
 
@@ -80,12 +85,18 @@ refresh token - treat it like a password; only ever store it as a secret.
 
 GitHub > **Settings > Secrets and variables > Actions > New repository secret**.
 
+## Creating the CRB workbooks
+
+There is no CRB workbook yet. Create the production one first - a copy of the DARB workbook
+is the quickest start (File > Make a copy, then clear its data tabs), or a blank sheet plus a
+first manual paste of `Code.gs` per `REBOOT.md`. Copy its Script ID into `SCRIPT_ID_CRB`.
+
 ## Setting up a staging workbook (to make `main` deploy somewhere)
 
-1. Make a copy of the production workbook (File > Make a copy) - this is staging.
+1. Make a copy of the CRB production workbook (File > Make a copy) - this is staging.
 2. In the copy: **Extensions > Apps Script > Project Settings > IDs** > copy its
    Script ID.
-3. Add it as the `SCRIPT_ID_STAGING` secret.
+3. Add it as the `SCRIPT_ID_CRB_STAGING` secret.
 
 Now `main` deploys to staging and `production` to live, from the same
 credentials.
@@ -93,7 +104,7 @@ credentials.
 ## Deploying manually from your machine (optional)
 
 ```bash
-cd "Macro - DARB Identification"
+cd "Macro - CRB Identification"
 cp .clasp.json.example .clasp.json     # paste the target Script ID into it
 clasp push                             # .claspignore limits this to Code.gs + appsscript.json
 ```
@@ -106,7 +117,7 @@ clasp push                             # .claspignore limits this to Code.gs + a
 - **`Could not read API credentials`** - `CLASPRC_JSON` is empty/malformed; re-copy.
 - **`Script ID ... not found` / 404** - wrong ID (likely the spreadsheet ID);
   re-copy from Project Settings > IDs.
-- **`main` push didn't deploy** - expected until `SCRIPT_ID_STAGING` is set; the
+- **`main` push didn't deploy** - expected until `SCRIPT_ID_CRB_STAGING` is set; the
   run logs a warning and the syntax gate still runs.
 - **Token stopped working** - a Google password change/security review can revoke
   the refresh token; re-run `clasp login` and update `CLASPRC_JSON`.

@@ -1,34 +1,56 @@
 name: Deploy Apps Script
 
-# Two-tier deploy via clasp:
-#   push to `main`        -> STAGING / test script   (secret: SCRIPT_ID_STAGING)
-#   push to `production`  -> PRODUCTION live script   (secret: SCRIPT_ID)
+# Two-tier deploy via clasp, for each macro in the repo:
+#   push to `main`        -> STAGING / test script
+#   push to `production`  -> PRODUCTION live script
 # Plus manual runs from the Actions tab ("Run workflow") - the target is chosen
-# by the branch you run it from. A syntax check AND the test suite gate every push.
+# by the branch you run it from. A syntax check AND the test suite gate every push,
+# and they cover BOTH macros, so a break in either stops both deploys.
 #
 # Required repository secrets (Settings > Secrets and variables > Actions):
-#   CLASPRC_JSON       full contents of ~/.clasprc.json after `clasp login`
-#   SCRIPT_ID          Script ID of the PRODUCTION workbook
-#                      (Extensions > Apps Script > Project Settings > IDs).
-#                      NOTE: this is NOT the spreadsheet ID from the sheet URL.
-#   SCRIPT_ID_STAGING  Script ID of a separate STAGING workbook (optional).
-#                      Until it is set, pushes to `main` skip the deploy (the
-#                      syntax gate still runs), so the test branch never touches
-#                      production.
-# Full setup: "Macro - DARB Identification/DEPLOY.md".
+#   CLASPRC_JSON           full contents of ~/.clasprc.json after `clasp login`
+#                          (shared - one Google account can own both workbooks)
+#   SCRIPT_ID              Script ID of the DARB PRODUCTION workbook
+#                          (Extensions > Apps Script > Project Settings > IDs).
+#                          NOTE: this is NOT the spreadsheet ID from the sheet URL.
+#   SCRIPT_ID_STAGING      Script ID of a separate DARB STAGING workbook (optional).
+#   SCRIPT_ID_CRB          Script ID of the CRB PRODUCTION workbook (optional until
+#                          that workbook exists - the CRB deploy skips with a warning).
+#   SCRIPT_ID_CRB_STAGING  Script ID of a separate CRB STAGING workbook (optional).
+# Until a macro's staging secret is set, pushes to `main` skip its deploy (the
+# syntax and test gates still run), so the test branch never touches production.
+# Full setup: "Macro - DARB Identification/DEPLOY.md" and
+# "Macro - CRB Identification/DEPLOY.md".
 
 on:
   push:
     branches: [ main, production ]
   workflow_dispatch:
 
-concurrency:
-  group: apps-script-deploy-${{ github.ref_name }}
-  cancel-in-progress: false
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    concurrency:
+      group: apps-script-deploy-${{ github.ref_name }}-${{ matrix.macro }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - macro: DARB
+            folder: Macro - DARB Identification
+            prod_secret: SCRIPT_ID
+            staging_secret: SCRIPT_ID_STAGING
+            # The DARB production workbook exists, so a missing Script ID is a
+            # misconfiguration and fails the run rather than skipping quietly.
+            prod_required: 'true'
+          - macro: CRB
+            folder: Macro - CRB Identification
+            prod_secret: SCRIPT_ID_CRB
+            staging_secret: SCRIPT_ID_CRB_STAGING
+            # Flip to 'true' once the CRB production workbook and its SCRIPT_ID_CRB
+            # secret are in place. Until then a `production` push skips CRB with a warning.
+            prod_required: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,33 +69,42 @@ jobs:
       - name: Test suite (gate before deploy)
         run: npm test
 
-      - name: Deploy to the branch's environment
+      - name: Deploy ${{ matrix.macro }} to the branch's environment
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
-          SCRIPT_ID_PROD: ${{ secrets.SCRIPT_ID }}
-          SCRIPT_ID_STAGING: ${{ secrets.SCRIPT_ID_STAGING }}
+          SCRIPT_ID_PROD: ${{ secrets[matrix.prod_secret] }}
+          SCRIPT_ID_STAGING: ${{ secrets[matrix.staging_secret] }}
+          PROD_REQUIRED: ${{ matrix.prod_required }}
+          MACRO: ${{ matrix.macro }}
+          FOLDER: ${{ matrix.folder }}
+          PROD_SECRET: ${{ matrix.prod_secret }}
+          STAGING_SECRET: ${{ matrix.staging_secret }}
           REF: ${{ github.ref_name }}
         run: |
           set -e
           if [ "$REF" = "production" ]; then
             if [ -z "$SCRIPT_ID_PROD" ]; then
-              echo "::error::Missing SCRIPT_ID secret for production. See Macro - DARB Identification/DEPLOY.md"
-              exit 1
+              if [ "$PROD_REQUIRED" = "true" ]; then
+                echo "::error::Missing $PROD_SECRET secret for $MACRO production. See $FOLDER/DEPLOY.md"
+                exit 1
+              fi
+              echo "::warning::No $PROD_SECRET secret set - skipping the $MACRO production deploy. Add the $MACRO workbook's Script ID as $PROD_SECRET to enable it."
+              exit 0
             fi
             TARGET_ID="$SCRIPT_ID_PROD"; ENVN="production"
           else
             if [ -z "$SCRIPT_ID_STAGING" ]; then
-              echo "::warning::No SCRIPT_ID_STAGING secret set - skipping staging deploy for branch '$REF'. The syntax check still ran. Add a staging workbook's Script ID as SCRIPT_ID_STAGING to enable test deploys."
+              echo "::warning::No $STAGING_SECRET secret set - skipping the $MACRO staging deploy for branch '$REF'. The syntax and test gates still ran. Add a staging workbook's Script ID as $STAGING_SECRET to enable test deploys."
               exit 0
             fi
             TARGET_ID="$SCRIPT_ID_STAGING"; ENVN="staging"
           fi
           if [ -z "$CLASPRC_JSON" ]; then
-            echo "::error::Missing CLASPRC_JSON secret. See Macro - DARB Identification/DEPLOY.md"
+            echo "::error::Missing CLASPRC_JSON secret. See $FOLDER/DEPLOY.md"
             exit 1
           fi
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
-          printf '{"scriptId":"%s","rootDir":"."}\n' "$TARGET_ID" > "Macro - DARB Identification/.clasp.json"
-          cd "Macro - DARB Identification"
+          printf '{"scriptId":"%s","rootDir":"."}\n' "$TARGET_ID" > "$FOLDER/.clasp.json"
+          cd "$FOLDER"
           clasp push -f
-          echo "Deployed to $ENVN (branch $REF)."
+          echo "Deployed $MACRO to $ENVN (branch $REF)."

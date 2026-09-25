@@ -1,10 +1,13 @@
 name: CI
 
 # Two gates before anything can be merged or deployed:
-#   1. Code.gs parses (Apps Script itself cannot run in Node).
-#   2. The behaviour suite passes. test/gas-mock.js fakes just enough of SpreadsheetApp for
-#      Code.gs to be loaded and driven in Node, so the tests exercise the real functions -
-#      there are no copies of the logic to drift from the source.
+#   1. Every macro's Code.gs parses (Apps Script itself cannot run in Node).
+#   2. The behaviour suite passes against every macro. test/gas-mock.js fakes just enough of
+#      SpreadsheetApp for Code.gs to be loaded and driven in Node, so the tests exercise the
+#      real functions - there are no copies of the logic to drift from the source.
+#
+# Both gates cover "Macro - DARB Identification" and "Macro - CRB Identification": the suites
+# are sector-agnostic and run once per macro folder (see test/README.md).
 
 on: [push, pull_request]
 
@@ -16,7 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Syntax check Code.gs
+      - name: Syntax check every macro Code.gs
         run: npm run check
 
   tests:
@@ -26,5 +29,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Run the pipeline test suite
+      - name: Run the pipeline test suite against every macro
         run: npm test

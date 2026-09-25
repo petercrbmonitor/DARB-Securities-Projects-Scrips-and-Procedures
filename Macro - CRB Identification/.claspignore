@@ -1,0 +1,6 @@
+# Only the script and its manifest are pushed to Apps Script.
+# Everything else in this folder (docs, examples, local clasp config) is ignored.
+**/**
+
+!Code.gs
+!appsscript.json
