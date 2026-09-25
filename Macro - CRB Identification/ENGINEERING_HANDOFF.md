@@ -1,4 +1,4 @@
-# DARB Securities Sort Pipeline - Engineering Handoff
+# CRB Securities Sort Pipeline - Engineering Handoff
 
 You are setting up an existing, working Google Apps Script in a GitHub repo with version control, deployment via `clasp`, and lightweight CI. The script is complete and runs today; your job is repo hygiene, reproducible deployment, and a test/CI scaffold - not a rewrite. Read this whole brief before touching the code.
 
@@ -6,9 +6,9 @@ You are setting up an existing, working Google Apps Script in a GitHub repo with
 
 ## 1. What this is
 
-`Code.gs` is a single-file, **container-bound** Google Apps Script attached to one Google Sheets workbook. It runs the end-to-end DARB (Digital Asset-Related Business) new-securities pipeline for CRB Monitor: consolidate AlphaSense exports, crosscheck against the live database and exclude lists, hand genuinely-new names to interns for research, route reviewed companies to their destination, and format qualified additions for Kintone bulk upload. It replaces a legacy `RunSort` VBA macro.
+`Code.gs` is a single-file, **container-bound** Google Apps Script attached to one Google Sheets workbook. It runs the end-to-end CRB (Cannabis-Related Business) new-securities pipeline for CRB Monitor: consolidate AlphaSense exports, crosscheck against the live database and exclude lists, hand genuinely-new names to interns for research, route reviewed companies to their destination, and format qualified additions for Kintone bulk upload. It replaces a legacy `RunSort` VBA macro.
 
-Everything is driven from a custom **DARB Pipeline** menu inside the workbook. There is no server, no database, and no external service beyond Google's own APIs. All state lives in the workbook's tabs.
+Everything is driven from a custom **CRB Pipeline** menu inside the workbook. There is no server, no database, and no external service beyond Google's own APIs. All state lives in the workbook's tabs.
 
 Workflow (numbered to match the menu):
 
@@ -63,7 +63,7 @@ Notes:
 ## 4. Recommended repo layout
 
 ```
-darb-sort-pipeline/
+crb-sort-pipeline/
   src/
     Code.js              # the Apps Script (clasp accepts .js; identical to Code.gs)
     appsscript.json      # manifest above
@@ -89,7 +89,7 @@ Keep `Code.js` as the single source of truth. Do not split it without coordinati
 ```bash
 npm install -g @google/clasp
 clasp login                     # opens browser; authorize with the account that owns the workbook
-mkdir darb-sort-pipeline && cd darb-sort-pipeline
+mkdir crb-sort-pipeline && cd crb-sort-pipeline
 clasp clone <SCRIPT_ID> --rootDir ./src
 ```
 
@@ -125,7 +125,7 @@ node_modules/
 **package.json**
 ```json
 {
-  "name": "darb-sort-pipeline",
+  "name": "crb-sort-pipeline",
   "private": true,
   "scripts": {
     "check": "node --check src/Code.js",
@@ -140,7 +140,7 @@ node_modules/
 ## 6. Deploy and authorize
 
 1. `clasp push` writes `src/Code.js` + `appsscript.json` to the bound script.
-2. Reload the workbook in the browser. `onOpen` builds the **DARB Pipeline** menu and scaffolds all tabs.
+2. Reload the workbook in the browser. `onOpen` builds the **CRB Pipeline** menu and scaffolds all tabs.
 3. Run any menu action once; accept the OAuth consent (Drive + Sheets + external request). Re-run after authorizing.
 4. Run **Utilities > Rescaffold / Restyle Tabs** once to apply current headers, teal styling, filters, banding, tab colours, and the Select/Move To controls across existing tabs.
 
@@ -208,7 +208,7 @@ Settings live in the Dashboard's Settings block (operator edits the Value column
 
 ## 11. Testing and CI
 
-`npm test` runs the suite in `test/` against every macro in the repo; `npm run test:darb` runs it against this one. `npm run check` is the syntax gate (`npm run check:darb` for this macro alone). Both gates run in CI on every push/PR (`.github/workflows/ci.yml`) and again before any `clasp` deploy - and they cover both macros, so a break in either stops both deploys.
+`npm test` runs the suite in `test/` against every macro in the repo; `npm run test:crb` runs it against this one. `npm run check` is the syntax gate (`npm run check:crb` for this macro alone). Both gates run in CI on every push/PR (`.github/workflows/ci.yml`) and again before any `clasp` deploy - and they cover both macros, so a break in either stops both deploys.
 
 Apps Script does not run in Node, so `test/gas-mock.js` implements enough of the platform - `SpreadsheetApp`, sheets, ranges, checkboxes, data validations, the alert/modal UI, `LockService`, `Utilities`, `DriveApp` - for `test/harness.js` to load the real `Code.gs` of the macro under test (`MACRO_DIR`) and drive it offline. **The suites call the real functions**; nothing is copied, so the tests cannot drift from the source. That drift risk is why the scaffold was held back in the original audit.
 

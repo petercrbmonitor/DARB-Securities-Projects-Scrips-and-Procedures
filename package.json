@@ -1,12 +1,18 @@
 {
-  "name": "darb-securities-pipeline",
+  "name": "crbm-securities-pipelines",
   "private": true,
   "version": "1.0.0",
-  "description": "DARB Securities new-securities sort pipeline (Google Apps Script) with GitHub auto-deploy via clasp.",
+  "description": "CRB Monitor new-securities sort pipelines (Google Apps Script) - DARB and CRB - with GitHub auto-deploy via clasp.",
   "scripts": {
-    "check": "node -e \"require('fs').copyFileSync('Macro - DARB Identification/Code.gs','/tmp/darb_check.js')\" && node --check /tmp/darb_check.js && echo \"Syntax OK\"",
-    "deploy": "cd \"Macro - DARB Identification\" && clasp push -f",
-    "test": "node test/run.js"
+    "check": "npm run check:darb && npm run check:crb",
+    "check:darb": "node -e \"require('fs').copyFileSync('Macro - DARB Identification/Code.gs','/tmp/darb_check.js')\" && node --check /tmp/darb_check.js && echo \"Syntax OK - DARB\"",
+    "check:crb": "node -e \"require('fs').copyFileSync('Macro - CRB Identification/Code.gs','/tmp/crb_check.js')\" && node --check /tmp/crb_check.js && echo \"Syntax OK - CRB\"",
+    "deploy": "npm run deploy:darb",
+    "deploy:darb": "cd \"Macro - DARB Identification\" && clasp push -f",
+    "deploy:crb": "cd \"Macro - CRB Identification\" && clasp push -f",
+    "test": "npm run test:darb && npm run test:crb",
+    "test:darb": "node test/run.js \"Macro - DARB Identification\"",
+    "test:crb": "node test/run.js \"Macro - CRB Identification\""
   },
   "devDependencies": {}
 }

@@ -1,7 +1,8 @@
 # DARB - Securities Projects, Scrips, and Procedures
 
-CRB Monitor working repository for DARB (Digital Asset-Related Business)
-securities projects, scrips, and operating procedures.
+CRB Monitor working repository for the new-securities identification pipelines
+and operating procedures. One macro per sector: DARB (Digital Asset-Related
+Business) and CRB (Cannabis-Related Business).
 
 ## Repository structure
 
@@ -22,11 +23,25 @@ The current, canonical DARB new-securities identification pipeline.
   data contract, conventions, testing/CI, and the prioritised backlog.
 - `CODE_AUDIT.md` - code audit and the status of each finding.
 
+### `Macro - CRB Identification/`
+The CRB new-securities identification pipeline - a copy of the DARB macro with
+the sector renamed, in its own folder with its own docs, workbook and Script ID
+so the two sectors run and deploy independently. Same file set as above, driven
+from a **CRB Pipeline** menu.
+
+The pipeline mechanics are sector-agnostic and identical to DARB's. What is
+sector-specific is the taxonomy in `Code.gs` - the sector dropdown, the
+sector-to-tier mapping and the inclusion/tier rationale boilerplate - and that
+is still the digital-asset set, copied verbatim so the build runs unchanged. See
+the "SECTOR TAXONOMY - PENDING CRB VALUES" comment in `Code.gs`: swap in the
+live CRB Kintone values before using the workbook for real CRB sorting.
+
 ### `test/`
 Offline test suite for the pipeline - `npm test`. `gas-mock.js` fakes enough of
 Apps Script for the real `Code.gs` to be loaded and driven in Node, so the tests
-exercise the shipped code rather than copies of it. Also run by CI and as a gate
-before any deploy.
+exercise the shipped code rather than copies of it. The suites are sector-agnostic,
+so they run once per macro - `npm run test:darb`, `npm run test:crb`, or both
+with `npm test`. Also run by CI and as a gate before any deploy.
 
 ### `archive/`
 Legacy and superseded Kintone app customizations and supporting docs, kept

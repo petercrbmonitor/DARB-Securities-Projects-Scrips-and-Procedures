@@ -1,7 +1,19 @@
 # Pipeline tests
 
-`npm test` — runs every `*.test.js` here in its own process and prints a combined tally.
-Also run by CI on every push/PR, and as a gate before any `clasp` deploy.
+`npm test` — runs every `*.test.js` here in its own process, once per macro folder, and prints
+a combined tally per macro. Also run by CI on every push/PR, and as a gate before any `clasp`
+deploy.
+
+The suites are sector-agnostic, so one suite covers every macro:
+
+| Command | Macro under test |
+|---------|------------------|
+| `npm test` | both, in order |
+| `npm run test:darb` | `Macro - DARB Identification` |
+| `npm run test:crb` | `Macro - CRB Identification` |
+
+Under the hood: `node test/run.js "<macro folder>"` passes the folder to the suites as
+`MACRO_DIR`, which `harness.js` loads `Code.gs` from (default: the DARB folder).
 
 ## How it works
 
@@ -9,10 +21,11 @@ Apps Script does not run in Node, so `gas-mock.js` implements just enough of the
 `SpreadsheetApp`, sheets, ranges, checkboxes, data validations, the modal/alert UI,
 `LockService`, `Utilities`, `DriveApp` — for `Code.gs` to be loaded and driven offline.
 
-`harness.js` reads the real `Macro - DARB Identification/Code.gs` and evaluates it in the
-global scope, then exposes the assertion and fixture helpers. **The suites call the real
-functions.** Nothing is reimplemented here, so the tests cannot quietly drift away from the
-source — the reason the unit-test scaffold was held back until now (`CODE_AUDIT.md` finding 6).
+`harness.js` reads the real `Code.gs` of the macro under test (`MACRO_DIR`, default
+`Macro - DARB Identification`) and evaluates it in the global scope, then exposes the
+assertion and fixture helpers. **The suites call the real functions.** Nothing is
+reimplemented here, so the tests cannot quietly drift away from the source — the reason the
+unit-test scaffold was held back until now (`CODE_AUDIT.md` finding 6).
 
 The mock is deliberately faithful where behaviour depends on it — for example
 `Range.removeCheckboxes()` clears TRUE/FALSE values exactly as Sheets does, which is what the
